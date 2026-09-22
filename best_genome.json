@@ -1,0 +1,15 @@
+{
+    "savedAtGeneration": 1,
+    "fitness": 2551.3,
+    "kills": 22,
+    "damageDealt": 1723,
+    "genes": {
+        "health_gene": 0.7011371693317692,
+        "attack_gene": 0.7906999912998347,
+        "defense_gene": 0.47030857035682316,
+        "speed_gene": 0.36344816514195355,
+        "aggression": 0.8761762156389046,
+        "heal_threshold": 0.2973649454960382,
+        "loot_desire": 0.6416582771144063
+    }
+}

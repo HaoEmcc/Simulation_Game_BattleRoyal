@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Battle Royale AI 2D - Web Visualizer v2</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: #1e293b;
+            --accent-color: #38bdf8;
+            --text-color: #f8fafc;
+            --danger-color: #ef4444;
+            --success-color: #22c55e;
+            --warning-color: #f59e0b;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            margin: 0 0 10px 0;
+            font-size: 1.8rem;
+            color: var(--accent-color);
+        }
+
+        .controls {
+            background-color: var(--panel-bg);
+            padding: 12px 25px;
+            border-radius: 10px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+            flex-wrap: wrap;
+        }
+
+        button, input[type="file"] {
+            background-color: #334155;
+            color: white;
+            border: 1px solid #475569;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        button:hover, button.active {
+            background-color: var(--accent-color);
+            color: #0f172a;
+        }
+
+        .main-container {
+            display: flex;
+            gap: 20px;
+            max-width: 1350px;
+            width: 100%;
+        }
+
+        .canvas-container {
+            position: relative;
+            background-color: var(--panel-bg);
+            border-radius: 12px;
+            padding: 10px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+        }
+
+        canvas {
+            background-color: #020617;
+            border-radius: 8px;
+            display: block;
+        }
+
+        .side-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            height: 650px;
+        }
+
+        .card {
+            background-color: var(--panel-bg);
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            text-align: center;
+        }
+
+        .stat-box {
+            background-color: #0f172a;
+            padding: 10px;
+            border-radius: 6px;
+        }
+
+        .stat-value {
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: var(--accent-color);
+        }
+
+        .legend {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 10px;
+            font-size: 0.85rem;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        /* --- TỐI ƯU KHUNG NHẬT KÝ DẠNG CUỘN --- */
+        .log-box {
+            height: 320px;
+            max-height: 320px;
+            background-color: #020617;
+            border-radius: 6px;
+            padding: 10px;
+            overflow-y: scroll;
+            font-family: monospace;
+            font-size: 0.85rem;
+            border: 1px solid #334155;
+            scroll-behavior: smooth;
+        }
+
+        /* Custom Thanh cuộn đẹp mắt */
+        .log-box::-webkit-scrollbar {
+            width: 8px;
+        }
+        .log-box::-webkit-scrollbar-track {
+            background: #0f172a;
+            border-radius: 4px;
+        }
+        .log-box::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+        .log-box::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-color);
+        }
+
+        .log-entry {
+            margin-bottom: 4px;
+            border-bottom: 1px solid #1e293b;
+            padding-bottom: 2px;
+            line-height: 1.4;
+        }
+
+        .log-kill { color: var(--danger-color); font-weight: bold; }
+        .log-pickup { color: var(--warning-color); }
+        .log-heal { color: var(--success-color); }
+
+        .speed-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>⚔️ BATTLE ROYALE 2D - VISUALIZER V2</h1>
+
+    <div class="controls">
+        <input type="file" id="jsonInput" accept=".json">
+        <button id="btnPlay">▶ Play</button>
+        <button id="btnPause">⏸ Pause</button>
+        <button id="btnReset">🔄 Reset</button>
+        
+        <div class="speed-control">
+            <label>Tốc độ:</label>
+            <button class="btnSpeed" data-speed="0.5">0.5x</button>
+            <button class="btnSpeed active" data-speed="1">1x</button>
+            <button class="btnSpeed" data-speed="2">2x</button>
+            <button class="btnSpeed" data-speed="4">4x</button>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <!-- Đấu trường Canvas -->
+        <div class="canvas-container">
+            <canvas id="arenaCanvas" width="650" height="650"></canvas>
+        </div>
+
+        <!-- Bảng điều khiển phụ -->
+        <div class="side-panel">
+            <div class="card">
+                <h3>Thống Kê Trận Đấu</h3>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div>Bước (Step)</div>
+                        <div class="stat-value" id="lblStep">0 / 0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div>Còn Sống</div>
+                        <div class="stat-value" id="lblAlive">0</div>
+                    </div>
+                </div>
+                <div style="margin-top: 10px; text-align: center;">
+                    <strong>Quán quân: </strong>
+                    <span id="lblWinner" style="color: var(--success-color); font-weight: bold;">Chưa có</span>
+                </div>
+                
+                <hr style="border-color: #334155; margin: 12px 0;">
+                
+                <div class="legend">
+                    <div class="legend-item"><span class="dot" style="background: #38bdf8;"></span> Hero</div>
+                    <div class="legend-item"><span class="dot" style="background: #f59e0b;"></span> Vũ khí</div>
+                    <div class="legend-item"><span class="dot" style="background: #22c55e;"></span> Bình máu</div>
+                </div>
+            </div>
+
+            <div class="card" style="flex: 1; display: flex; flex-direction: column;">
+                <h3>Nhật Ký Chiến Trường</h3>
+                <div class="log-box" id="logBox">
+                    <div class="log-entry">Tải file 'unity_match_replay.json' mới để xem...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('arenaCanvas');
+        const ctx = canvas.getContext('2d');
+        const logBox = document.getElementById('logBox');
+
+        let replayData = null;
+        let heroes = {};
+        let items = {};
+        let eventIndex = 0;
+        let currentStep = 0;
+        let isPlaying = false;
+        let playbackSpeed = 1;
+        let activeEffects = [];
+
+        let lastStepTime = 0;
+        const BASE_STEP_INTERVAL = 300; // Khoảng thời gian giữa các Step
+
+        function toCanvasX(x) {
+            const mapSize = replayData?.metadata?.mapSize || 800;
+            return (x / mapSize) * canvas.width;
+        }
+
+        function toCanvasY(y) {
+            const mapSize = replayData?.metadata?.mapSize || 800;
+            return (y / mapSize) * canvas.height;
+        }
+
+        // --- 1. LỚP VẬT PHẨM ---
+        class RenderItem {
+            constructor(data) {
+                this.id = data.id;
+                this.type = data.type;
+                this.name = data.name;
+                this.x = data.x;
+                this.y = data.y;
+                this.isPickedUp = false;
+            }
+
+            draw() {
+                if (this.isPickedUp) return;
+
+                const cx = toCanvasX(this.x);
+                const cy = toCanvasY(this.y);
+
+                ctx.beginPath();
+                if (this.type === "WEAPON") {
+                    ctx.fillStyle = '#f59e0b';
+                    ctx.fillRect(cx - 3, cy - 3, 6, 6);
+                } else {
+                    ctx.arc(cx, cy, 3.5, 0, Math.PI * 2);
+                    ctx.fillStyle = '#22c55e';
+                    ctx.fill();
+                }
+            }
+        }
+
+        // --- 2. LỚP HERO ---
+        class RenderHero {
+            constructor(data) {
+                this.id = data.id;
+                this.maxHp = data.maxHp;
+                this.hp = data.maxHp;
+                this.x = data.x;
+                this.y = data.y;
+                this.isAlive = true;
+                this.radius = 6.5;
+                this.hasWeapon = false;
+            }
+
+            draw() {
+                const cx = toCanvasX(this.x);
+                const cy = toCanvasY(this.y);
+
+                if (!this.isAlive) {
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+                    ctx.fillStyle = '#475569';
+                    ctx.fill();
+                    return;
+                }
+
+                ctx.beginPath();
+                ctx.arc(cx, cy, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#38bdf8';
+                ctx.fill();
+                ctx.strokeStyle = this.hasWeapon ? '#f59e0b' : '#ffffff';
+                ctx.lineWidth = this.hasWeapon ? 2 : 1;
+                ctx.stroke();
+
+                const hpPercent = Math.max(0, this.hp / this.maxHp);
+                const barWidth = 16;
+                const barHeight = 2.5;
+
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                ctx.fillRect(cx - barWidth/2, cy - 11, barWidth, barHeight);
+
+                ctx.fillStyle = hpPercent > 0.5 ? '#22c55e' : hpPercent > 0.2 ? '#eab308' : '#ef4444';
+                ctx.fillRect(cx - barWidth/2, cy - 11, barWidth * hpPercent, barHeight);
+            }
+        }
+
+        // --- 3. ĐỌC FILE JSON ---
+        document.getElementById('jsonInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                try {
+                    replayData = JSON.parse(evt.target.result);
+                    resetSimulation();
+                    appendLog("Tải dữ liệu trận đấu thành công!");
+                } catch (err) {
+                    alert("File JSON không hợp lệ!");
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        // --- 4. RESET SIMULATION ---
+        function resetSimulation() {
+            if (!replayData) return;
+
+            isPlaying = false;
+            eventIndex = 0;
+            currentStep = 0;
+            lastStepTime = 0;
+            activeEffects = [];
+            heroes = {};
+            items = {};
+            logBox.innerHTML = "";
+            document.getElementById('lblWinner').innerText = "Chưa có";
+
+            if (replayData.initialStates.items) {
+                replayData.initialStates.items.forEach(it => {
+                    items[it.id] = new RenderItem(it);
+                });
+            }
+
+            replayData.initialStates.heroes.forEach(h => {
+                heroes[h.id] = new RenderHero(h);
+            });
+
+            updateUI();
+        }
+
+        // --- 5. LẤY VÀ XỬ LÝ ĐỒNG THỜI TẤT CẢ EVENT TRONG CÙNG 1 STEP ---
+        function processStepEvents() {
+            if (!replayData || eventIndex >= replayData.events.length) {
+                isPlaying = false;
+                if (replayData && replayData.metadata.winnerId !== -1) {
+                    document.getElementById('lblWinner').innerText = `Hero #${replayData.metadata.winnerId}`;
+                }
+                return;
+            }
+
+            // Lấy step của sự kiện hiện tại
+            const targetStep = replayData.events[eventIndex].step;
+            currentStep = targetStep;
+
+            // Chạy tất cả các hành động có cùng stepId cùng lúc
+            while (eventIndex < replayData.events.length && replayData.events[eventIndex].step === targetStep) {
+                const evt = replayData.events[eventIndex];
+
+                switch (evt.eventType) {
+                    case "MOVE":
+                        if (heroes[evt.heroId]) {
+                            heroes[evt.heroId].x = evt.x;
+                            heroes[evt.heroId].y = evt.y;
+                        }
+                        break;
+
+                    case "PICKUP":
+                        if (items[evt.itemId]) {
+                            items[evt.itemId].isPickedUp = true;
+                        }
+                        if (heroes[evt.heroId]) {
+                            if (items[evt.itemId]?.type === "WEAPON") {
+                                heroes[evt.heroId].hasWeapon = true;
+                            }
+                        }
+                        appendLog(`🎒 <span class="log-pickup">Hero #${evt.heroId} nhặt ${evt.itemName}</span>`);
+                        break;
+
+                    case "HEAL":
+                        if (heroes[evt.heroId]) {
+                            const h = heroes[evt.heroId];
+                            h.hp = evt.hpLeft;
+                            
+                            activeEffects.push({
+                                type: 'TEXT',
+                                text: `+${evt.healAmount}`,
+                                color: '#22c55e',
+                                x: toCanvasX(h.x),
+                                y: toCanvasY(h.y),
+                                life: 1.0
+                            });
+                        }
+                        appendLog(`🧪 <span class="log-heal">Hero #${evt.heroId} uống máu (+${evt.healAmount} HP)</span>`);
+                        break;
+
+                    case "ATTACK":
+                        const atk = heroes[evt.attackerId];
+                        const def = heroes[evt.defenderId];
+
+                        if (atk && def) {
+                            def.hp = evt.defenderHpLeft;
+
+                            if (evt.isKill) {
+                                def.isAlive = false;
+                                appendLog(`☠️ <span class="log-kill">Hero #${evt.attackerId} hạ gục Hero #${evt.defenderId}!</span>`);
+                            } else {
+                                appendLog(`⚔️ Hero #${evt.attackerId} gây ${evt.damage} DMG -> Hero #${evt.defenderId}`);
+                            }
+
+                            activeEffects.push({
+                                type: 'BEAM',
+                                x1: toCanvasX(atk.x), y1: toCanvasY(atk.y),
+                                x2: toCanvasX(def.x), y2: toCanvasY(def.y),
+                                life: 1.0
+                            });
+
+                            activeEffects.push({
+                                type: 'TEXT',
+                                text: `-${evt.damage}`,
+                                color: '#ef4444',
+                                x: toCanvasX(def.x),
+                                y: toCanvasY(def.y),
+                                life: 1.0
+                            });
+                        }
+                        break;
+                }
+
+                eventIndex++;
+            }
+
+            updateUI();
+        }
+
+        // --- 6. HÀM RENDER FRAME CANVAS ---
+        function render(timestamp) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 1. Vẽ Vật phẩm
+            Object.values(items).forEach(it => it.draw());
+
+            // 2. Vẽ Hero
+            Object.values(heroes).forEach(h => h.draw());
+
+            // 3. Vẽ Hiệu ứng (Đạn & Chữ nổi)
+            for (let i = activeEffects.length - 1; i >= 0; i--) {
+                const fx = activeEffects[i];
+
+                if (fx.type === 'BEAM') {
+                    ctx.beginPath();
+                    ctx.moveTo(fx.x1, fx.y1);
+                    ctx.lineTo(fx.x2, fx.y2);
+                    ctx.strokeStyle = `rgba(239, 68, 68, ${fx.life})`;
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+                } else if (fx.type === 'TEXT') {
+                    ctx.fillStyle = fx.color;
+                    ctx.globalAlpha = fx.life;
+                    ctx.font = 'bold 12px sans-serif';
+                    ctx.fillText(fx.text, fx.x, fx.y - (1.0 - fx.life) * 20);
+                    ctx.globalAlpha = 1.0;
+                }
+
+                fx.life -= 0.03;
+                if (fx.life <= 0) activeEffects.splice(i, 1);
+            }
+
+            // 4. Cập nhật Step mới theo chu kỳ thời gian
+            if (isPlaying && timestamp) {
+                const interval = BASE_STEP_INTERVAL / playbackSpeed;
+                if (timestamp - lastStepTime >= interval) {
+                    processStepEvents();
+                    lastStepTime = timestamp;
+                }
+            }
+
+            requestAnimationFrame(render);
+        }
+
+        // --- 7. BẢNG ĐIỀU KHIỂN & TỰ ĐỘNG CUỘN LOG ---
+        function updateUI() {
+            if (!replayData) return;
+            const aliveCount = Object.values(heroes).filter(h => h.isAlive).length;
+            document.getElementById('lblStep').innerText = `${currentStep} / ${replayData.metadata.totalSteps}`;
+            document.getElementById('lblAlive').innerText = aliveCount;
+        }
+
+        function appendLog(msg) {
+            const div = document.createElement('div');
+            div.className = 'log-entry';
+            div.innerHTML = `[Step ${currentStep}] ${msg}`;
+            logBox.appendChild(div);
+            // Tự động cuộn xuống dưới cùng khi có tin mới
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        document.getElementById('btnPlay').onclick = () => { 
+            if (replayData) {
+                isPlaying = true; 
+                lastStepTime = performance.now();
+            }
+        };
+        document.getElementById('btnPause').onclick = () => { isPlaying = false; };
+        document.getElementById('btnReset').onclick = () => { resetSimulation(); };
+
+        document.querySelectorAll('.btnSpeed').forEach(btn => {
+            btn.onclick = (e) => {
+                document.querySelectorAll('.btnSpeed').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                playbackSpeed = parseFloat(e.target.getAttribute('data-speed'));
+            };
+        });
+
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>
