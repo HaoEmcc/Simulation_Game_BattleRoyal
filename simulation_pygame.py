@@ -14,13 +14,14 @@ class Item:
         self.is_picked_up = False
 
 class Weapon(Item):
-    def __init__(self, item_id, name, x, y, bonus_attack, attack_range, cooldown, weapon_class, color):
+    def __init__(self, item_id, name, x, y, bonus_attack, attack_range, cooldown, weapon_class, color, spread=0.0):
         super().__init__(item_id, "WEAPON", name, x, y)
         self.bonus_attack = bonus_attack
         self.attack_range = attack_range
         self.cooldown = cooldown
         self.weapon_class = weapon_class
         self.color = color
+        self.spread = spread  # Độ lệch đạn (tính bằng radian)
 
 class HealthPotion(Item):
     def __init__(self, item_id, x, y, heal_amount=50.0):
@@ -31,17 +32,19 @@ def generate_random_weapon(item_id, map_size):
     x = random.uniform(80, map_size-80)
     y = random.uniform(80, map_size-80)
     w_type = random.choice([
-        {"name": "Dao găm", "atk": 12, "rng": 22, "cd": 8, "cls": "MELEE", "col": (180, 180, 180)},
-        {"name": "Kiếm", "atk": 20, "rng": 30, "cd": 15, "cls": "MELEE", "col": (200, 200, 200)},
-        {"name": "Rìu chiến", "atk": 45, "rng": 25, "cd": 35, "cls": "MELEE", "col": (150, 100, 50)},
-        {"name": "Giáo dài", "atk": 25, "rng": 50, "cd": 22, "cls": "MELEE", "col": (210, 180, 140)},
-        {"name": "Shotgun", "atk": 40, "rng": 100, "cd": 45, "cls": "RANGED", "col": (169, 169, 169)},
-        {"name": "Cung ngắn", "atk": 15, "rng": 180, "cd": 20, "cls": "RANGED", "col": (139, 69, 19)},
-        {"name": "Nỏ", "atk": 30, "rng": 220, "cd": 40, "cls": "RANGED", "col": (100, 50, 20)},
-        {"name": "Súng tỉa", "atk": 85, "rng": 350, "cd": 80, "cls": "RANGED", "col": (50, 50, 50)},
-        {"name": "Trượng phép", "atk": 25, "rng": 150, "cd": 30, "cls": "RANGED", "col": (148, 0, 211)},
+        {"name": "Dao găm", "atk": 12, "rng": 22, "cd": 8, "cls": "MELEE", "col": (180, 180, 180), "spread": 0.0},
+        {"name": "Kiếm", "atk": 20, "rng": 30, "cd": 15, "cls": "MELEE", "col": (200, 200, 200), "spread": 0.0},
+        {"name": "Rìu chiến", "atk": 45, "rng": 25, "cd": 35, "cls": "MELEE", "col": (150, 100, 50), "spread": 0.0},
+        {"name": "Giáo dài", "atk": 25, "rng": 50, "cd": 22, "cls": "MELEE", "col": (210, 180, 140), "spread": 0.0},
+        {"name": "Shotgun", "atk": 40, "rng": 100, "cd": 45, "cls": "RANGED", "col": (169, 169, 169), "spread": 0.35}, # Xòe rộng
+        {"name": "Cung ngắn", "atk": 15, "rng": 180, "cd": 20, "cls": "RANGED", "col": (139, 69, 19), "spread": 0.12},
+        {"name": "Nỏ", "atk": 30, "rng": 220, "cd": 40, "cls": "RANGED", "col": (100, 50, 20), "spread": 0.06},
+        {"name": "Súng tỉa", "atk": 85, "rng": 350, "cd": 80, "cls": "RANGED", "col": (50, 50, 50), "spread": 0.01},  # Bắn cực chuẩn
+        {"name": "Trượng phép", "atk": 25, "rng": 150, "cd": 30, "cls": "RANGED", "col": (148, 0, 211), "spread": 0.08},
+        {"name": "Kiến Hào", "atk": 150, "rng": 15000, "cd": 120, "cls": "RANGED", "col": (255, 255, 245), "spread": 0.0},
+        {"name": "Thái Lâm", "atk": 70, "rng": 80, "cd": 70, "cls": "COW", "col": (90, 60, 90), "spread": 0.0},
     ])
-    return Weapon(item_id, w_type["name"], x, y, w_type["atk"], w_type["rng"], w_type["cd"], w_type["cls"], w_type["col"])
+    return Weapon(item_id, w_type["name"], x, y, w_type["atk"], w_type["rng"], w_type["cd"], w_type["cls"], w_type["col"], w_type["spread"])
 
 # ==================== 2. VẬT CẢN (OBSTACLES) ====================
 class Obstacle:
@@ -211,7 +214,7 @@ class Hero:
         
         self.max_hp = random.randint(100, 150)
         self.hp = self.max_hp
-        self.max_stamina = 100
+        self.max_stamina = 500
         self.stamina = self.max_stamina
         
         self.base_attack = random.randint(5, 15)
@@ -244,6 +247,24 @@ class Hero:
         self.state_commit_timer = 0
         
         self.color = (random.randint(50,150), random.randint(100,200), random.randint(150,255))
+
+        # ================= NEW: HỆ THỐNG TÍNH CÁCH (AI PERSONALITY) =================
+        # 1. Bảng ưu tiên hành động riêng biệt cho từng nhân vật
+        self.personality = {
+            "RUN ZONE": random.randint(40,100),  # Tuyệt đối phải chạy bo
+            "HEALING": random.randint(85, 95),   # Ưu tiên hồi máu
+            "FLEEING": random.randint(30, 90),   # Kẻ nhát gan sẽ có điểm cao (dễ bỏ chạy)
+            "LOOTING": random.randint(60, 85),   # Kẻ tham lam có điểm cao (thích nhặt đồ hơn đánh nhau)
+            "COMBAT": random.randint(60, 100),    # Kẻ hiếu chiến có điểm cao (thấy là đánh)
+            "RESTING": random.randint(40, 50),
+            "PATROL": random.randint(20, 30),
+            "IDLE": 0
+        }
+        
+        # 2. Ngưỡng quyết định (Thresholds) cho từng nhân vật
+        self.flee_threshold = random.uniform(0.5, 1.1)   # Ngưỡng đánh giá sức mạnh để bỏ chạy (0.5 = liều lĩnh, 1.1 = cẩn thận)
+        self.heal_threshold = random.uniform(0.4, 0.7)   # % máu bắt buộc phải dùng bình máu
+        self.loot_greed_dist = random.randint(80, 180)   # Khoảng cách bỏ qua kẻ thù để ưu tiên nhặt đồ
 
     def reset(self, map_size):
         self.hp = self.max_hp
@@ -327,7 +348,7 @@ class Hero:
             
     def dash(self):
         if self.stamina >= 50 and self.dash_timer <= 0:
-            self.stamina -= 50
+            #self.stamina -= 50
             self.dash_timer = 10 
             return True
         return False
@@ -374,12 +395,22 @@ class Hero:
             self.attack_cooldown -= 1
         if self.hit_timer > 0:
             self.hit_timer -= 1
-            
+
+        # Tính tốc độ di chuyển hiệu dụng (Cận chiến di chuyển nhanh hơn 15%)
+        effective_speed = self.base_speed
+        if self.equipped_weapon:
+            if self.equipped_weapon.weapon_class == "MELEE":
+                effective_speed *= 1.3
+            elif self.equipped_weapon.weapon_class == "RANGED":
+                effective_speed *= 0.9
+            elif self.equipped_weapon.weapon_class == "COW":
+                effective_speed *= 1.9
+
         if self.dash_timer > 0:
-            self.speed = self.base_speed * 4.0 
+            self.speed = effective_speed * 4  # Tốc độ khi Dash
             self.dash_timer -= 1
         else:
-            self.speed = self.base_speed
+            self.speed = effective_speed
             
         center_x, center_y = map_size/2, map_size/2
         dist_to_center = math.hypot(self.x - center_x, self.y - center_y)
@@ -393,6 +424,16 @@ class Hero:
             if self.hp <= 0:
                 self.is_alive = False
                 return
+
+        # TỰ ĐỘNG DASH NÉ ĐẠN: Phát hiện đạn địch ở gần
+        for p in app.projectiles:
+            if p.shooter != self and math.hypot(self.x - p.x, self.y - p.y) < 80:
+                if self.dash():
+                    # Lách sang bên vuông góc với hướng đạn bay
+                    dodge_angle = math.atan2(p.vy, p.vx) + (math.pi / 2 if random.random() < 0.5 else -math.pi / 2)
+                    self.x += math.cos(dodge_angle) * 12
+                    self.y += math.sin(dodge_angle) * 12
+                    break
 
         # Dò tìm kẻ thù (Có hệ thống điểm ưu tiên & Khóa mục tiêu)
         if self.locked_enemy and not self.locked_enemy.is_alive:
@@ -437,33 +478,35 @@ class Hero:
 
         self._pickup_nearby(items)
 
-        # STATE MACHINE
+        # ================= STATE MACHINE (NÂNG CẤP) =================
         if self.state_commit_timer > 0:
             self.state_commit_timer -= 1
 
         desired_state = "PATROL"
         
+        # Đánh giá trạng thái mong muốn dựa trên các NGƯỠNG TÍNH CÁCH
         if is_outside_zone or dist_to_center > safe_zone_radius - 50:
             desired_state = "RUN ZONE"
-        elif self.hp < self.max_hp * 0.5 and self.potions_count > 0:
+        elif self.hp < self.max_hp * self.heal_threshold and self.potions_count > 0:
             desired_state = "HEALING"
-        elif closest_enemy and self.evaluate_threat(closest_enemy) < 0.8:
+        elif closest_enemy and self.evaluate_threat(closest_enemy) < self.flee_threshold:
             desired_state = "FLEEING"
-        elif closest_item and (not closest_enemy or min_dist_e > 120):
+        elif closest_item and (not closest_enemy or min_dist_e > self.loot_greed_dist):
             desired_state = "LOOTING"
         elif closest_enemy:
             desired_state = "COMBAT"
         elif self.hp < self.max_hp:
             desired_state = "RESTING"
 
-        priority = {"RUN ZONE": 7, "HEALING": 6, "FLEEING": 5, "LOOTING": 4, "COMBAT": 3, "RESTING": 2, "PATROL": 1, "IDLE": 0}
-        current_priority = priority.get(self.committed_state, 0)
-        desired_priority = priority.get(desired_state, 0)
+        # Đánh giá ưu tiên dựa trên BẢNG ƯU TIÊN CÁ NHÂN (Thay vì dùng chung 1 bảng cứng)
+        current_priority = self.personality.get(self.committed_state, 0)
+        desired_priority = self.personality.get(desired_state, 0)
         
+        # Nếu đã hết thời gian cam kết trạng thái cũ, hoặc trạng thái mới khẩn cấp hơn hẳn
         if self.state_commit_timer <= 0 or desired_priority > current_priority:
             if desired_state != self.committed_state:
                 self.committed_state = desired_state
-                self.state_commit_timer = 20
+                self.state_commit_timer = random.randint(15, 25) # Thêm độ trễ phản xạ ngẫu nhiên
                 self.rest_timer = 0
         
         self.state_label = self.committed_state
@@ -481,21 +524,23 @@ class Hero:
             
         elif self.committed_state == "FLEEING":
             if closest_enemy:
-                # Tìm vật cản gần nhất để núp
-                cover = self._find_nearest_cover(closest_enemy.x, closest_enemy.y, nearby_obstacles)
-                if cover and min_dist_e < 100:
-                    # Chạy về phía sau vật cản
-                    dx = (cover.x + cover.w/2) - closest_enemy.x
-                    dy = (cover.y + cover.h/2) - closest_enemy.y
-                    d = math.hypot(dx, dy)
-                    if d > 0:
-                        hide_x = cover.x + cover.w/2 + (dx/d) * 30
-                        hide_y = cover.y + cover.h/2 + (dy/d) * 30
-                        self.move_towards(hide_x, hide_y, nearby_obstacles)
+                # NẾU KHÔNG CHẠY ĐƯỢC: Bị áp sát quá gần (< 45px) hoặc bị dồn ép -> Quay lại COMBAT luôn!
+                if min_dist_e < 45 or (self.hp < 30 and min_dist_e < 100):
+                    self.committed_state = "COMBAT"
+                    self.state_label = "FIGHT BACK!"
+                    self.state_commit_timer = 30
                 else:
-                    if min_dist_e < 60:
-                        self.dash()
-                    self.move_away(closest_enemy.x, closest_enemy.y, nearby_obstacles)
+                    cover = self._find_nearest_cover(closest_enemy.x, closest_enemy.y, nearby_obstacles)
+                    if cover and min_dist_e < 100:
+                        dx = (cover.x + cover.w/2) - closest_enemy.x
+                        dy = (cover.y + cover.h/2) - closest_enemy.y
+                        d = math.hypot(dx, dy)
+                        if d > 0:
+                            hide_x = cover.x + cover.w/2 + (dx/d) * 30
+                            hide_y = cover.y + cover.h/2 + (dy/d) * 30
+                            self.move_towards(hide_x, hide_y, nearby_obstacles)
+                    else:
+                        self.move_away(closest_enemy.x, closest_enemy.y, nearby_obstacles)
             else:
                 self.state_commit_timer = 0
                 
@@ -509,24 +554,22 @@ class Hero:
             if closest_enemy:
                 atk_range = self.get_attack_range()
                 is_ranged = self.equipped_weapon and self.equipped_weapon.weapon_class == "RANGED"
-                
-                # 1. Kiểm tra tầm nhìn trước để quyết định cách di chuyển
                 can_hit = self._can_see(closest_enemy.x, closest_enemy.y, nearby_obstacles)
                 
-                # 2. HỆ THỐNG DI CHUYỂN TRONG COMBAT (Sửa lỗi đứng im)
+                # DASH ÁP SÁT: Cận chiến dùng Dash để thu hẹp khoảng cách nhanh chóng
+                if not is_ranged and 35 < min_dist_e < 180 and self.stamina >= 50:
+                    if self.dash():
+                        self.move_towards(closest_enemy.x, closest_enemy.y, nearby_obstacles)
+
+                # Di chuyển chiến thuật
                 if is_ranged:
                     if not can_hit:
-                        # Khuất tầm nhìn -> Bắt buộc phải chạy tới tìm góc bắn
                         self.move_towards(closest_enemy.x, closest_enemy.y, nearby_obstacles)
                     elif min_dist_e < atk_range * 0.5:
-                        # Bị áp sát quá gần -> Thả diều (Lùi lại)
                         self.move_away(closest_enemy.x, closest_enemy.y, nearby_obstacles)
                     elif min_dist_e > atk_range * 0.9:
-                        # Hơi xa mục tiêu -> Tiến lên
                         self.move_towards(closest_enemy.x, closest_enemy.y, nearby_obstacles)
                     else:
-                        # Đang ở tầm lý tưởng -> Di chuyển ngang (Strafe) để lách đạn
-                        # Hướng lách phụ thuộc vào ID để mỗi nhân vật lách một kiểu
                         angle = math.atan2(closest_enemy.y - self.y, closest_enemy.x - self.x)
                         strafe_dir = math.pi / 2 if self.hero_id % 2 == 0 else -math.pi / 2
                         nx = self.x + math.cos(angle + strafe_dir) * (self.speed * 0.7)
@@ -536,17 +579,15 @@ class Hero:
                 else: 
                     # MELEE (Vũ khí Cận chiến)
                     if not can_hit or min_dist_e > atk_range * 0.6:
-                        # Luôn lao thẳng vào kẻ thù cho tới khi cực kỳ sát
                         self.move_towards(closest_enemy.x, closest_enemy.y, nearby_obstacles)
                     elif self.attack_cooldown > 0:
-                        # Đã áp sát nhưng kỹ năng đang hồi -> Đi vòng tròn quanh kẻ thù
                         angle = math.atan2(closest_enemy.y - self.y, closest_enemy.x - self.x)
                         nx = self.x + math.cos(angle + math.pi/2) * (self.speed * 0.8)
                         ny = self.y + math.sin(angle + math.pi/2) * (self.speed * 0.8)
                         if not self._check_collision(nx, ny, nearby_obstacles):
                             self.x, self.y = nx, ny
 
-                # 3. HỆ THỐNG TẤN CÔNG (Sử dụng đạn hoặc chém)
+                # Thực hiện Tấn công
                 if min_dist_e <= atk_range and self.attack_cooldown <= 0 and can_hit:
                     damage = max(1, self.get_total_attack() - closest_enemy.defense)
                     self.attack_cooldown = self.get_cooldown()
@@ -555,10 +596,17 @@ class Hero:
                     w_col = self.equipped_weapon.color if self.equipped_weapon else (200,200,200)
                     
                     if is_ranged:
-                        # Bắn đạn bay (Projectiles)
-                        app.projectiles.append(Projectile(self.x, self.y, closest_enemy.x, closest_enemy.y, damage, self, w_col, speed=9.0))
+                        # BAN ĐẠN BẰNG ĐỘ LỆCH (SPREAD)
+                        spread = self.equipped_weapon.spread if self.equipped_weapon else 0.05
+                        base_angle = math.atan2(closest_enemy.y - self.y, closest_enemy.x - self.x)
+                        final_angle = base_angle + random.uniform(-spread, spread) # Tính toán góc lệch ngẫu nhiên
+                        
+                        target_x = self.x + math.cos(final_angle) * atk_range
+                        target_y = self.y + math.sin(final_angle) * atk_range
+                        
+                        app.projectiles.append(Projectile(self.x, self.y, target_x, target_y, damage, self, w_col, speed=9.0))
                     else:
-                        # Cận chiến: Sát thương lập tức
+                        # Cận chiến: Chém trực tiếp
                         closest_enemy.hp -= damage
                         closest_enemy.hit_timer = 10 
                         self.damage_dealt += damage
@@ -638,12 +686,19 @@ class ArenaApp:
         self.projectiles = []
         self.frame_count = 0
         
-        self.safe_zone_radius = self.map_size * 0.45
+        # CẤU HÌNH VÒNG BO THEO ĐỢT
+        self.max_radius = self.map_size * 0.45
+        self.final_radius = 450.0 # Khoảng trống cuối cùng đủ lớn để giao tranh (không thu về 0)
+        self.safe_zone_radius = self.max_radius
+        
+        self.total_phases = 4 # Chia làm 4 đợt thu bo
+        self.phase_duration = self.max_frames // self.total_phases
         
         self.render_enabled = True
         self.show_states = True
         self.show_minimap = True
         self.running = True
+        self.focus_camera = False
         
         self.obstacles = generate_obstacles(map_size, 80)
         self.spawn_items()
@@ -678,12 +733,12 @@ class ArenaApp:
         
         self.match_count += 1
         self.frame_count = 0
-        self.safe_zone_radius = self.map_size * 0.45
+        self.safe_zone_radius = self.max_radius
         self.dmg_texts.clear()
         self.animations.clear()
         self.particles.clear()
         self.projectiles.clear()
-        
+
         self.obstacles = generate_obstacles(self.map_size, 80)
         
         for h in self.population:
@@ -707,10 +762,7 @@ class ArenaApp:
                     self.show_minimap = not self.show_minimap
                 elif event.key == pygame.K_f:
                     # Theo dõi Top 1 Kill
-                    alive = [h for h in self.population if h.is_alive]
-                    if alive:
-                        top = max(alive, key=lambda h: (h.kills, h.damage_dealt))
-                        self.camera.following = top
+                    self.focus_camera = not self.focus_camera
                 elif event.key == pygame.K_c:
                     # Về giữa bản đồ
                     self.camera.center_on(self.map_size/2, self.map_size/2)
@@ -831,11 +883,26 @@ class ArenaApp:
                 
                 if self.show_states:
                     c_text = (255,255,255)
-                    if h.state_label == "FLEEING": c_text = (255, 100, 100)
-                    elif h.state_label == "COMBAT": c_text = (255, 200, 50)
-                    elif h.state_label == "RESTING": c_text = (100, 255, 100)
+                    if h.state_label == "FLEEING":
+                        c_text = (255, 100, 100)
+                    elif h.state_label == "COMBAT":
+                        c_text = (255, 200, 50)
+                    elif h.state_label == "RESTING":
+                        c_text = (255,255,255)
+
+                    # Tên quái
+                    name_text = f"P{h.hero_id}"
+                    name_surf = self.small_font.render(name_text, True, c_text)
+                    self.screen.blit(name_surf, (sx - name_surf.get_width() // 2, sy - 38))
+
+                    # Trạng thái
                     st_surf = self.small_font.render(h.state_label, True, c_text)
-                    self.screen.blit(st_surf, (sx-15, sy+12))
+                    self.screen.blit(st_surf, (sx - st_surf.get_width() // 2, sy + 26))
+
+                    # Tên vũ khí
+                    weapon_name = h.equipped_weapon.name if h.equipped_weapon else "Tay không"
+                    weapon_surf = self.small_font.render(weapon_name, True, c_text)
+                    self.screen.blit(weapon_surf, (sx - weapon_surf.get_width() // 2, sy + 12))
         
         # Particles
         for p in list(self.particles):
@@ -1010,12 +1077,37 @@ class ArenaApp:
             return # Dừng update game khi hiển thị bảng thống kê
 
         alive_count = sum(1 for h in self.population if h.is_alive)
-        if alive_count <= 1 or self.frame_count >= self.max_frames:
-            self.match_over = True # Kích hoạt bảng thống kê thay vì reset ngay
+        # Bỏ giới hạn max_frames để trận đấu tiếp tục cho đến khi có người thắng
+        if alive_count <= 1:
+            self.match_over = True 
             return
+
+        #Hệ thống theo dỗi camera
+        if(self.focus_camera):
+            alive = [h for h in self.population if h.is_alive]
+            if alive:
+                top = max(alive, key=lambda h: (h.kills, h.damage_dealt))
+                self.camera.following = top
             
-        shrink_rate = (self.map_size * 0.45) / (self.max_frames * 0.8) 
-        self.safe_zone_radius = max(0, self.safe_zone_radius - shrink_rate)
+        # ==================== HỆ THỐNG BO THU THEO ĐỢT ====================
+        # Xác định đợt hiện tại (Phase)
+        current_phase = min(self.frame_count // self.phase_duration, self.total_phases - 1)
+        time_in_phase = self.frame_count % self.phase_duration
+        
+        # 60% thời gian đầu của mỗi đợt là CHỜ, 40% thời gian sau là THU BO
+        wait_time = self.phase_duration * 0.6  
+        
+        # Tính toán mức bán kính bắt đầu và kết thúc của đợt này
+        drop_per_phase = (self.max_radius - self.final_radius) / self.total_phases
+        start_r = self.max_radius - (drop_per_phase * current_phase)
+        end_r = self.max_radius - (drop_per_phase * (current_phase + 1))
+        
+        if time_in_phase > wait_time:
+            # Bắt đầu từ từ thu bo về mức end_r
+            shrink_time_left = self.phase_duration - wait_time
+            shrink_rate = (start_r - end_r) / shrink_time_left
+            self.safe_zone_radius = max(end_r, self.safe_zone_radius - shrink_rate)
+        # ==================================================================
             
         for h in self.population:
             h.update(self.map_size, self.items, self.population, self, self.safe_zone_radius, self.obstacles)
@@ -1074,5 +1166,5 @@ class ArenaApp:
         sys.exit()
 
 if __name__ == "__main__":
-    app = ArenaApp(map_size=6000, pop_size=10, max_frames=4000)
+    app = ArenaApp(map_size=6000, pop_size=200, max_frames=5000)
     app.run()
