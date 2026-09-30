@@ -3,1156 +3,552 @@ import math
 import random
 import sys
 
-# ==================== 1. VẬT PHẨM & VŨ KHÍ ====================
-class Item:
-    def __init__(self, item_id, item_type, name, x, y):
-        self.item_id = item_id
-        self.item_type = item_type
-        self.name = name
-        self.x = x
-        self.y = y
-        self.is_picked_up = False
+from config import (MAP_SIZE, POP_SIZE, MAX_FRAMES, SCREEN_W, SCREEN_H, UI_WIDTH, 
+                    FPS, MAX_PARTICLES, HeroClass, HERO_CLASS_CONFIG)
+from utils import lerp_color, draw_poly
+from particles import (ExplosionParticle, SparkParticle, SmokeParticle, 
+                       WhirlwindParticle, DamageText, BloodParticle)
+from items import HealthPotion, generate_random_weapon
+from obstacles import generate_obstacles
+from projectiles import Projectile
+from hero import Hero
+from camera import Camera
+from kill_feed import KillEntry
 
-class Weapon(Item):
-    def __init__(self, item_id, name, x, y, bonus_attack, attack_range, cooldown, weapon_class, color, spread=0.0):
-        super().__init__(item_id, "WEAPON", name, x, y)
-        self.bonus_attack = bonus_attack
-        self.attack_range = attack_range
-        self.cooldown = cooldown
-        self.weapon_class = weapon_class
-        self.color = color
-        self.spread = spread  # Độ lệch đạn (tính bằng radian)
-
-class HealthPotion(Item):
-    def __init__(self, item_id, x, y, heal_amount=50.0):
-        super().__init__(item_id, "POTION", "Bình Máu", x, y)
-        self.heal_amount = heal_amount
-
-def generate_random_weapon(item_id, map_size):
-    x = random.uniform(80, map_size-80)
-    y = random.uniform(80, map_size-80)
-    w_type = random.choice([
-        {"name": "Dao găm", "atk": 12, "rng": 22, "cd": 8, "cls": "MELEE", "col": (180, 180, 180), "spread": 0.0},
-        {"name": "Kiếm", "atk": 20, "rng": 30, "cd": 15, "cls": "MELEE", "col": (200, 200, 200), "spread": 0.0},
-        {"name": "Rìu chiến", "atk": 45, "rng": 25, "cd": 35, "cls": "MELEE", "col": (150, 100, 50), "spread": 0.0},
-        {"name": "Giáo dài", "atk": 25, "rng": 50, "cd": 22, "cls": "MELEE", "col": (210, 180, 140), "spread": 0.0},
-        {"name": "Shotgun", "atk": 40, "rng": 100, "cd": 45, "cls": "RANGED", "col": (169, 169, 169), "spread": 0.35}, # Xòe rộng
-        {"name": "Cung ngắn", "atk": 15, "rng": 180, "cd": 20, "cls": "RANGED", "col": (139, 69, 19), "spread": 0.12},
-        {"name": "Nỏ", "atk": 30, "rng": 220, "cd": 40, "cls": "RANGED", "col": (100, 50, 20), "spread": 0.06},
-        {"name": "Súng tỉa", "atk": 85, "rng": 350, "cd": 80, "cls": "RANGED", "col": (50, 50, 50), "spread": 0.01},  # Bắn cực chuẩn
-        {"name": "Trượng phép", "atk": 25, "rng": 150, "cd": 30, "cls": "RANGED", "col": (148, 0, 211), "spread": 0.08},
-        {"name": "Kiến Hào", "atk": 150, "rng": 15000, "cd": 120, "cls": "RANGED", "col": (255, 255, 245), "spread": 0.0},
-        {"name": "Thái Lâm", "atk": 70, "rng": 80, "cd": 70, "cls": "COW", "col": (90, 60, 90), "spread": 0.0},
-    ])
-    return Weapon(item_id, w_type["name"], x, y, w_type["atk"], w_type["rng"], w_type["cd"], w_type["cls"], w_type["col"], w_type["spread"])
-
-# ==================== 2. VẬT CẢN (OBSTACLES) ====================
-class Obstacle:
-    def __init__(self, x, y, w, h, obs_type="ROCK"):
-        self.x = x
-        self.y = y
-        self.w = w
-        self.h = h
-        self.obs_type = obs_type # ROCK, TREE, WALL
-        
-        if obs_type == "ROCK":
-            self.color = (80, 80, 90)
-        elif obs_type == "TREE":
-            self.color = (30, 100, 30)
-        else:
-            self.color = (100, 90, 80)
-    
-    def get_rect(self):
-        return pygame.Rect(self.x, self.y, self.w, self.h)
-    
-    def collides_point(self, px, py, radius=10):
-        """Kiểm tra va chạm giữa hình tròn (Hero) và hình chữ nhật (Obstacle)."""
-        closest_x = max(self.x, min(px, self.x + self.w))
-        closest_y = max(self.y, min(py, self.y + self.h))
-        dist = math.hypot(px - closest_x, py - closest_y)
-        return dist < radius
-    
-    def blocks_line(self, x1, y1, x2, y2):
-        """Kiểm tra xem đường thẳng từ (x1,y1) đến (x2,y2) có bị chặn bởi obstacle không."""
-        rect = self.get_rect()
-        # Kiểm tra nhanh bằng cách chia đường thẳng thành 5 điểm
-        for t in [0.2, 0.4, 0.5, 0.6, 0.8]:
-            px = x1 + (x2 - x1) * t
-            py = y1 + (y2 - y1) * t
-            if rect.collidepoint(px, py):
-                return True
-        return False
-
-def generate_obstacles(map_size, count=60):
-    obstacles = []
-    for _ in range(count):
-        obs_type = random.choice(["ROCK", "ROCK", "TREE", "TREE", "WALL"])
-        if obs_type == "WALL":
-            w = random.randint(80, 200)
-            h = random.randint(15, 25)
-            if random.random() < 0.5:
-                w, h = h, w
-        elif obs_type == "TREE":
-            size = random.randint(20, 40)
-            w, h = size, size
-        else: # ROCK
-            w = random.randint(30, 70)
-            h = random.randint(30, 70)
-        
-        x = random.uniform(100, map_size - 100 - w)
-        y = random.uniform(100, map_size - 100 - h)
-        
-        # Không đặt vật cản quá gần tâm bản đồ (chừa chỗ cho vòng bo cuối)
-        cx, cy = map_size / 2, map_size / 2
-        if math.hypot(x + w/2 - cx, y + h/2 - cy) < 150:
-            continue
-            
-        obstacles.append(Obstacle(x, y, w, h, obs_type))
-    return obstacles
-
-# ==================== 3. HIỆU ỨNG (ANIMATIONS) ====================
-class Projectile:
-    def __init__(self, x, y, target_x, target_y, damage, shooter, color, speed=8.0):
-        self.x = x
-        self.y = y
-        self.damage = damage
-        self.shooter = shooter
-        self.color = color
-        self.hitbox_radius = 4
-        
-        # Tính toán hướng và vận tốc (speed = 8.0 để đạn bay chậm, dễ nhìn)
-        dx = target_x - x
-        dy = target_y - y
-        dist = math.hypot(dx, dy)
-        if dist > 0:
-            self.vx = (dx / dist) * speed
-            self.vy = (dy / dist) * speed
-        else:
-            self.vx = speed
-            self.vy = 0
-            
-        self.life = 80 # Tồn tại tối đa 80 frame nếu không trúng gì
-class DamageText:
-    def __init__(self, x, y, text, color=(255, 50, 50)):
-        self.x = x
-        self.y = y
-        self.text = text
-        self.color = color
-        self.life = 60
-
-class AttackAnim:
-    def __init__(self, x1, y1, x2, y2, weapon_class, color):
-        self.x1 = x1
-        self.y1 = y1
-        self.x2 = x2
-        self.y2 = y2
-        self.weapon_class = weapon_class
-        self.color = color
-        self.life = 25
-
-class BloodParticle:
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-        angle = random.uniform(0, math.pi * 2)
-        speed = random.uniform(1, 4)
-        self.vx = math.cos(angle) * speed
-        self.vy = math.sin(angle) * speed
-        self.life = random.randint(10, 20)
-
-# ==================== 4. CAMERA ====================
-class Camera:
-    def __init__(self, screen_w, screen_h, map_size):
-        self.x = 0.0
-        self.y = 0.0
-        self.screen_w = screen_w
-        self.screen_h = screen_h
-        self.map_size = map_size
-        self.speed = 15.0
-        self.following = None 
-    
-    def center_on(self, target_x, target_y, smooth=False):
-        tx = target_x - self.screen_w / 2
-        ty = target_y - self.screen_h / 2
-        
-        if smooth:
-            # Nội suy tuyến tính (Lerp) giúp camera di chuyển mượt
-            self.x += (tx - self.x) * 0.08
-            self.y += (ty - self.y) * 0.08
-        else:
-            self.x = tx
-            self.y = ty
-            
-        self._clamp()
-    
-    def move(self, dx, dy):
-        self.x += dx * self.speed
-        self.y += dy * self.speed
-        self.following = None # Ngưng theo dõi khi di chuyển thủ công
-        self._clamp()
-    
-    def _clamp(self):
-        self.x = max(0, min(self.x, self.map_size - self.screen_w))
-        self.y = max(0, min(self.y, self.map_size - self.screen_h))
-        
-    def world_to_screen(self, wx, wy):
-        return int(wx - self.x), int(wy - self.y)
-    
-    def is_visible(self, wx, wy, margin=50):
-        """Kiểm tra xem 1 điểm có nằm trong viewport không (để tối ưu rendering)."""
-        return (-margin < wx - self.x < self.screen_w + margin and
-                -margin < wy - self.y < self.screen_h + margin)
-    
-    def is_rect_visible(self, rx, ry, rw, rh, margin=50):
-        return not (rx + rw < self.x - margin or rx > self.x + self.screen_w + margin or
-                    ry + rh < self.y - margin or ry > self.y + self.screen_h + margin)
-
-# ==================== 5. HERO ====================
-class Hero:
-    def __init__(self, hero_id):
-        self.hero_id = hero_id
-        
-        self.max_hp = random.randint(100, 150)
-        self.hp = self.max_hp
-        self.max_stamina = 500
-        self.stamina = self.max_stamina
-        
-        self.base_attack = random.randint(5, 15)
-        self.defense = random.randint(1, 4)
-        self.base_speed = random.uniform(1.2, 2.0) 
-        self.speed = self.base_speed
-        
-        self.base_attack_range = 20.0
-        self.base_cooldown = 20
-        
-        self.x = 0.0
-        self.y = 0.0
-        self.wander_target = None
-        
-        self.equipped_weapon = None
-        self.potions_count = 0
-        
-        self.kills = 0
-        self.damage_dealt = 0
-        self.is_alive = True
-        
-        self.hit_timer = 0
-        self.attack_cooldown = 0
-        self.dash_timer = 0
-        self.rest_timer = 0
-        self.locked_enemy = None
-        
-        self.state_label = "IDLE"
-        self.committed_state = None
-        self.state_commit_timer = 0
-        
-        self.color = (random.randint(50,150), random.randint(100,200), random.randint(150,255))
-
-        # ================= NEW: HỆ THỐNG TÍNH CÁCH (AI PERSONALITY) =================
-        # 1. Bảng ưu tiên hành động riêng biệt cho từng nhân vật
-        self.personality = {
-            "RUN ZONE": random.randint(40,100),  # Tuyệt đối phải chạy bo
-            "HEALING": random.randint(85, 95),   # Ưu tiên hồi máu
-            "FLEEING": random.randint(30, 90),   # Kẻ nhát gan sẽ có điểm cao (dễ bỏ chạy)
-            "LOOTING": random.randint(60, 85),   # Kẻ tham lam có điểm cao (thích nhặt đồ hơn đánh nhau)
-            "COMBAT": random.randint(60, 100),    # Kẻ hiếu chiến có điểm cao (thấy là đánh)
-            "RESTING": random.randint(40, 50),
-            "PATROL": random.randint(20, 30),
-            "IDLE": 0
-        }
-        
-        # 2. Ngưỡng quyết định (Thresholds) cho từng nhân vật
-        self.flee_threshold = random.uniform(0.5, 1.1)   # Ngưỡng đánh giá sức mạnh để bỏ chạy (0.5 = liều lĩnh, 1.1 = cẩn thận)
-        self.heal_threshold = random.uniform(0.4, 0.7)   # % máu bắt buộc phải dùng bình máu
-        self.loot_greed_dist = random.randint(80, 180)   # Khoảng cách bỏ qua kẻ thù để ưu tiên nhặt đồ
-
-    def reset(self, map_size):
-        self.hp = self.max_hp
-        self.stamina = self.max_stamina
-        self.x = random.uniform(150, map_size - 150)
-        self.y = random.uniform(150, map_size - 150)
-        self.equipped_weapon = None
-        self.potions_count = 0
-        self.kills = 0
-        self.damage_dealt = 0
-        self.is_alive = True
-        self.hit_timer = 0
-        self.attack_cooldown = 0
-        self.dash_timer = 0
-        self.wander_target = None
-        self.state_label = "IDLE"
-        self.committed_state = None
-        self.state_commit_timer = 0
-
-    def get_total_attack(self):
-        return self.base_attack + (self.equipped_weapon.bonus_attack if self.equipped_weapon else 0)
-
-    def get_attack_range(self):
-        return self.equipped_weapon.attack_range if self.equipped_weapon else self.base_attack_range
-
-    def get_cooldown(self):
-        return self.equipped_weapon.cooldown if self.equipped_weapon else self.base_cooldown
-        
-    def evaluate_threat(self, enemy):
-        my_power = self.hp * self.get_total_attack()
-        enemy_power = max(1, enemy.hp * enemy.get_total_attack())
-        score = my_power / enemy_power
-        my_range = self.get_attack_range()
-        enemy_range = enemy.get_attack_range()
-        if enemy_range > my_range * 2:
-            score *= 0.7
-        return score
-        
-    def move_towards(self, target_x, target_y, obstacles=None):
-        dx = target_x - self.x
-        dy = target_y - self.y
-        dist = math.hypot(dx, dy)
-        if dist > 0:
-            base_angle = math.atan2(dy, dx)
-            # Quét các góc: Thẳng, lệch 30, 60, 90 độ hai bên để tìm đường lách
-            angles_to_try = [0, 0.52, -0.52, 1.04, -1.04, 1.57, -1.57]
-            
-            for offset in angles_to_try:
-                angle = base_angle + offset
-                new_x = self.x + math.cos(angle) * self.speed
-                new_y = self.y + math.sin(angle) * self.speed
-                
-                if not obstacles or not self._check_collision(new_x, new_y, obstacles):
-                    self.x = new_x
-                    self.y = new_y
-                    return
-
-    def move_away(self, target_x, target_y, obstacles=None):
-        dx = self.x - target_x
-        dy = self.y - target_y
-        dist = math.hypot(dx, dy)
-        if dist > 0:
-            base_angle = math.atan2(dy, dx)
-            angles_to_try = [0, 0.52, -0.52, 1.04, -1.04, 1.57, -1.57]
-            
-            for offset in angles_to_try:
-                angle = base_angle + offset
-                new_x = self.x + math.cos(angle) * self.speed
-                new_y = self.y + math.sin(angle) * self.speed
-                
-                if not obstacles or not self._check_collision(new_x, new_y, obstacles):
-                    self.x = new_x
-                    self.y = new_y
-                    return
-
-    def _check_collision(self, px, py, obstacles):
-        for obs in obstacles:
-            if obs.collides_point(px, py, 10):
-                return True
-        return False
-            
-    def dash(self):
-        if self.stamina >= 50 and self.dash_timer <= 0:
-            #self.stamina -= 50
-            self.dash_timer = 10 
-            return True
-        return False
-    
-    def _can_see(self, tx, ty, obstacles):
-        """Kiểm tra tầm nhìn có bị vật cản chắn không."""
-        for obs in obstacles:
-            if obs.blocks_line(self.x, self.y, tx, ty):
-                return False
-        return True
-
-    def _find_nearest_cover(self, enemy_x, enemy_y, obstacles):
-        """Tìm vật cản gần nhất có thể núp phía sau (so với kẻ thù)."""
-        best_obs = None
-        best_dist = 9999
-        for obs in obstacles:
-            cx = obs.x + obs.w / 2
-            cy = obs.y + obs.h / 2
-            # Kiểm tra vật cản nằm giữa mình và kẻ thù
-            dist_to_me = math.hypot(cx - self.x, cy - self.y)
-            dist_enemy_to_obs = math.hypot(cx - enemy_x, cy - enemy_y)
-            if dist_to_me < 200 and dist_to_me < best_dist:
-                # Điểm núp: phía sau vật cản (xa kẻ thù nhất)
-                best_dist = dist_to_me
-                best_obs = obs
-        return best_obs
-
-    def _get_nearby_obstacles(self, obstacles):
-        """Chỉ lấy các vật cản xung quanh bán kính 200px để tối ưu CPU"""
-        nearby = []
-        for obs in obstacles:
-            if abs(obs.x - self.x) < 200 and abs(obs.y - self.y) < 200:
-                nearby.append(obs)
-        return nearby
-
-    def update(self, map_size, items, heroes, app, safe_zone_radius, obstacles):
-        if not self.is_alive: return
-
-        nearby_obstacles = self._get_nearby_obstacles(obstacles)
-
-        if self.stamina < self.max_stamina:
-            self.stamina += 0.2
-        if self.attack_cooldown > 0:
-            self.attack_cooldown -= 1
-        if self.hit_timer > 0:
-            self.hit_timer -= 1
-
-        # Tính tốc độ di chuyển hiệu dụng (Cận chiến di chuyển nhanh hơn 15%)
-        effective_speed = self.base_speed
-        if self.equipped_weapon:
-            if self.equipped_weapon.weapon_class == "MELEE":
-                effective_speed *= 1.3
-            elif self.equipped_weapon.weapon_class == "RANGED":
-                effective_speed *= 0.9
-            elif self.equipped_weapon.weapon_class == "COW":
-                effective_speed *= 1.9
-
-        if self.dash_timer > 0:
-            self.speed = effective_speed * 4  # Tốc độ khi Dash
-            self.dash_timer -= 1
-        else:
-            self.speed = effective_speed
-            
-        center_x, center_y = map_size/2, map_size/2
-        dist_to_center = math.hypot(self.x - center_x, self.y - center_y)
-        is_outside_zone = dist_to_center > safe_zone_radius
-        
-        if is_outside_zone:
-            self.hp -= 0.5
-            self.hit_timer = 2
-            if app.frame_count % 15 == 0:
-                app.dmg_texts.append(DamageText(self.x, self.y - 10, "-1", (100, 255, 100)))
-            if self.hp <= 0:
-                self.is_alive = False
-                return
-
-        # TỰ ĐỘNG DASH NÉ ĐẠN: Phát hiện đạn địch ở gần
-        for p in app.projectiles:
-            if p.shooter != self and math.hypot(self.x - p.x, self.y - p.y) < 80:
-                if self.dash():
-                    # Lách sang bên vuông góc với hướng đạn bay
-                    dodge_angle = math.atan2(p.vy, p.vx) + (math.pi / 2 if random.random() < 0.5 else -math.pi / 2)
-                    self.x += math.cos(dodge_angle) * 12
-                    self.y += math.sin(dodge_angle) * 12
-                    break
-
-        # Dò tìm kẻ thù (Có hệ thống điểm ưu tiên & Khóa mục tiêu)
-        if self.locked_enemy and not self.locked_enemy.is_alive:
-            self.locked_enemy = None
-            
-        closest_enemy = None
-        min_score = 99999
-        min_dist_e = 250
-        
-        for h in heroes:
-            if h != self and h.is_alive:
-                dist = math.hypot(self.x - h.x, self.y - h.y)
-                if dist < 350 and self._can_see(h.x, h.y, nearby_obstacles):
-                    # Chấm điểm: Càng gần và càng ít máu thì điểm càng thấp (càng ưu tiên)
-                    score = dist + (h.hp * 1.5)
-                    
-                    # Hệ thống chống do dự: Tăng ưu tiên (giảm 50% điểm) nếu đang là mục tiêu bị khóa
-                    if h == self.locked_enemy:
-                        score *= 0.5
-                        
-                    if score < min_score:
-                        min_score = score
-                        closest_enemy = h
-                        min_dist_e = dist
-                        
-        self.locked_enemy = closest_enemy
-
-        closest_item = None
-        min_dist_i = 150 
-        for it in items:
-            if not it.is_picked_up:
-                if it.item_type == "WEAPON" and self.equipped_weapon is None:
-                    dist = math.hypot(self.x - it.x, self.y - it.y)
-                    if dist < min_dist_i:
-                        min_dist_i = dist
-                        closest_item = it
-                elif it.item_type == "POTION" and self.potions_count < 2:
-                    dist = math.hypot(self.x - it.x, self.y - it.y)
-                    if dist < min_dist_i:
-                        min_dist_i = dist
-                        closest_item = it
-
-        self._pickup_nearby(items)
-
-        # ================= STATE MACHINE (NÂNG CẤP) =================
-        if self.state_commit_timer > 0:
-            self.state_commit_timer -= 1
-
-        desired_state = "PATROL"
-        
-        # Đánh giá trạng thái mong muốn dựa trên các NGƯỠNG TÍNH CÁCH
-        if is_outside_zone or dist_to_center > safe_zone_radius - 50:
-            desired_state = "RUN ZONE"
-        elif self.hp < self.max_hp * self.heal_threshold and self.potions_count > 0:
-            desired_state = "HEALING"
-        elif closest_enemy and self.evaluate_threat(closest_enemy) < self.flee_threshold:
-            desired_state = "FLEEING"
-        elif closest_item and (not closest_enemy or min_dist_e > self.loot_greed_dist):
-            desired_state = "LOOTING"
-        elif closest_enemy:
-            desired_state = "COMBAT"
-        elif self.hp < self.max_hp:
-            desired_state = "RESTING"
-
-        # Đánh giá ưu tiên dựa trên BẢNG ƯU TIÊN CÁ NHÂN (Thay vì dùng chung 1 bảng cứng)
-        current_priority = self.personality.get(self.committed_state, 0)
-        desired_priority = self.personality.get(desired_state, 0)
-        
-        # Nếu đã hết thời gian cam kết trạng thái cũ, hoặc trạng thái mới khẩn cấp hơn hẳn
-        if self.state_commit_timer <= 0 or desired_priority > current_priority:
-            if desired_state != self.committed_state:
-                self.committed_state = desired_state
-                self.state_commit_timer = random.randint(15, 25) # Thêm độ trễ phản xạ ngẫu nhiên
-                self.rest_timer = 0
-        
-        self.state_label = self.committed_state
-
-        # THỰC THI
-        if self.committed_state == "RUN ZONE":
-            self.move_towards(center_x, center_y, nearby_obstacles)
-            
-        elif self.committed_state == "HEALING":
-            self.hp = min(self.max_hp, self.hp + 50)
-            self.potions_count -= 1
-            app.dmg_texts.append(DamageText(self.x, self.y - 20, "+50", (0, 255, 0)))
-            self.committed_state = "PATROL"
-            self.state_commit_timer = 0
-            
-        elif self.committed_state == "FLEEING":
-            if closest_enemy:
-                # NẾU KHÔNG CHẠY ĐƯỢC: Bị áp sát quá gần (< 45px) hoặc bị dồn ép -> Quay lại COMBAT luôn!
-                if min_dist_e < 45 or (self.hp < 30 and min_dist_e < 100):
-                    self.committed_state = "COMBAT"
-                    self.state_label = "FIGHT BACK!"
-                    self.state_commit_timer = 30
-                else:
-                    cover = self._find_nearest_cover(closest_enemy.x, closest_enemy.y, nearby_obstacles)
-                    if cover and min_dist_e < 100:
-                        dx = (cover.x + cover.w/2) - closest_enemy.x
-                        dy = (cover.y + cover.h/2) - closest_enemy.y
-                        d = math.hypot(dx, dy)
-                        if d > 0:
-                            hide_x = cover.x + cover.w/2 + (dx/d) * 30
-                            hide_y = cover.y + cover.h/2 + (dy/d) * 30
-                            self.move_towards(hide_x, hide_y, nearby_obstacles)
-                    else:
-                        self.move_away(closest_enemy.x, closest_enemy.y, nearby_obstacles)
-            else:
-                self.state_commit_timer = 0
-                
-        elif self.committed_state == "LOOTING":
-            if closest_item:
-                self.move_towards(closest_item.x, closest_item.y, nearby_obstacles)
-            else:
-                self.state_commit_timer = 0
-
-        elif self.committed_state == "COMBAT":
-            if closest_enemy:
-                atk_range = self.get_attack_range()
-                is_ranged = self.equipped_weapon and self.equipped_weapon.weapon_class == "RANGED"
-                can_hit = self._can_see(closest_enemy.x, closest_enemy.y, nearby_obstacles)
-                
-                # DASH ÁP SÁT: Cận chiến dùng Dash để thu hẹp khoảng cách nhanh chóng
-                if not is_ranged and 35 < min_dist_e < 180 and self.stamina >= 50:
-                    if self.dash():
-                        self.move_towards(closest_enemy.x, closest_enemy.y, nearby_obstacles)
-
-                # Di chuyển chiến thuật
-                if is_ranged:
-                    if not can_hit:
-                        self.move_towards(closest_enemy.x, closest_enemy.y, nearby_obstacles)
-                    elif min_dist_e < atk_range * 0.5:
-                        self.move_away(closest_enemy.x, closest_enemy.y, nearby_obstacles)
-                    elif min_dist_e > atk_range * 0.9:
-                        self.move_towards(closest_enemy.x, closest_enemy.y, nearby_obstacles)
-                    else:
-                        angle = math.atan2(closest_enemy.y - self.y, closest_enemy.x - self.x)
-                        strafe_dir = math.pi / 2 if self.hero_id % 2 == 0 else -math.pi / 2
-                        nx = self.x + math.cos(angle + strafe_dir) * (self.speed * 0.7)
-                        ny = self.y + math.sin(angle + strafe_dir) * (self.speed * 0.7)
-                        if not self._check_collision(nx, ny, nearby_obstacles):
-                            self.x, self.y = nx, ny
-                else: 
-                    # MELEE (Vũ khí Cận chiến)
-                    if not can_hit or min_dist_e > atk_range * 0.6:
-                        self.move_towards(closest_enemy.x, closest_enemy.y, nearby_obstacles)
-                    elif self.attack_cooldown > 0:
-                        angle = math.atan2(closest_enemy.y - self.y, closest_enemy.x - self.x)
-                        nx = self.x + math.cos(angle + math.pi/2) * (self.speed * 0.8)
-                        ny = self.y + math.sin(angle + math.pi/2) * (self.speed * 0.8)
-                        if not self._check_collision(nx, ny, nearby_obstacles):
-                            self.x, self.y = nx, ny
-
-                # Thực hiện Tấn công
-                if min_dist_e <= atk_range and self.attack_cooldown <= 0 and can_hit:
-                    damage = max(1, self.get_total_attack() - closest_enemy.defense)
-                    self.attack_cooldown = self.get_cooldown()
-                    
-                    w_cls = self.equipped_weapon.weapon_class if self.equipped_weapon else "MELEE"
-                    w_col = self.equipped_weapon.color if self.equipped_weapon else (200,200,200)
-                    
-                    if is_ranged:
-                        # BAN ĐẠN BẰNG ĐỘ LỆCH (SPREAD)
-                        spread = self.equipped_weapon.spread if self.equipped_weapon else 0.05
-                        base_angle = math.atan2(closest_enemy.y - self.y, closest_enemy.x - self.x)
-                        final_angle = base_angle + random.uniform(-spread, spread) # Tính toán góc lệch ngẫu nhiên
-                        
-                        target_x = self.x + math.cos(final_angle) * atk_range
-                        target_y = self.y + math.sin(final_angle) * atk_range
-                        
-                        app.projectiles.append(Projectile(self.x, self.y, target_x, target_y, damage, self, w_col, speed=9.0))
-                    else:
-                        # Cận chiến: Chém trực tiếp
-                        closest_enemy.hp -= damage
-                        closest_enemy.hit_timer = 10 
-                        self.damage_dealt += damage
-                        
-                        app.animations.append(AttackAnim(self.x, self.y, closest_enemy.x, closest_enemy.y, w_cls, w_col))
-                        app.dmg_texts.append(DamageText(closest_enemy.x, closest_enemy.y - 20, str(damage)))
-                        for _ in range(5):
-                            app.particles.append(BloodParticle(closest_enemy.x, closest_enemy.y))
-
-                        if closest_enemy.hp <= 0:
-                            closest_enemy.is_alive = False
-                            self.kills += 1
-            else:
-                self.state_commit_timer = 0
-
-        elif self.committed_state == "RESTING":
-            self.rest_timer += 1
-            if self.rest_timer > 60: 
-                self.hp = min(self.max_hp, self.hp + 0.1)
-                if app.frame_count % 30 == 0:
-                    app.dmg_texts.append(DamageText(self.x, self.y - 10, "+", (150, 255, 150)))
-            
-        elif self.committed_state == "PATROL":
-            self.rest_timer = 0
-            if self.wander_target is None or math.hypot(self.x - self.wander_target[0], self.y - self.wander_target[1]) < 20:
-                rx = center_x + random.uniform(-safe_zone_radius*0.4, safe_zone_radius*0.4)
-                ry = center_y + random.uniform(-safe_zone_radius*0.4, safe_zone_radius*0.4)
-                self.wander_target = (rx, ry)
-            self.move_towards(self.wander_target[0], self.wander_target[1], nearby_obstacles)
-
-        self._clamp_bounds(map_size)
-        
-    def _clamp_bounds(self, map_size):
-        self.x = max(10, min(self.x, map_size - 10))
-        self.y = max(10, min(self.y, map_size - 10))
-        
-    def _pickup_nearby(self, items):
-        for it in items:
-            if not it.is_picked_up:
-                dist = math.hypot(self.x - it.x, self.y - it.y)
-                if dist < 20:
-                    if it.item_type == "WEAPON" and self.equipped_weapon is None:
-                        it.is_picked_up = True
-                        self.equipped_weapon = it
-                    elif it.item_type == "POTION" and self.potions_count < 2:
-                        it.is_picked_up = True
-                        self.potions_count += 1
-
-# ==================== 6. SIMULATION MANAGER ====================
+# ==================== ARENA APP ====================
 class ArenaApp:
-    def __init__(self, map_size=3000, pop_size=80, max_frames=4000):
+    def __init__(self, map_size=8000, pop_size=300, max_frames=6000):
         pygame.init()
-        self.map_size = map_size
-        self.pop_size = pop_size
-        self.max_frames = max_frames
-        
-        self.screen_w = 1000
-        self.screen_h = 800
-        self.ui_width = 260
-        self.screen = pygame.display.set_mode((self.screen_w + self.ui_width, self.screen_h))
-        pygame.display.set_caption("AI Battle Royale - V8 Obstacles & Camera")
-        self.clock = pygame.time.Clock()
-        self.font = pygame.font.SysFont("Arial", 14, bold=True)
-        self.title_font = pygame.font.SysFont("Arial", 22, bold=True)
-        self.small_font = pygame.font.SysFont("Arial", 12)
-        
-        self.camera = Camera(self.screen_w, self.screen_h, map_size)
-        self.camera.center_on(map_size/2, map_size/2)
-        
-        self.match_count = 1
-        self.population = [Hero(i) for i in range(pop_size)]
-        self.obstacles = []
-        self.items = []
-        self.dmg_texts = []
-        self.animations = []
-        self.particles = []
-        self.projectiles = []
-        self.frame_count = 0
-        
-        # CẤU HÌNH VÒNG BO THEO ĐỢT
-        self.max_radius = self.map_size * 0.45
-        self.final_radius = 450.0 # Khoảng trống cuối cùng đủ lớn để giao tranh (không thu về 0)
-        self.safe_zone_radius = self.max_radius
-        
-        self.total_phases = 4 # Chia làm 4 đợt thu bo
-        self.phase_duration = self.max_frames // self.total_phases
-        
-        self.render_enabled = True
-        self.show_states = True
-        self.show_minimap = True
-        self.running = True
-        self.focus_camera = False
-        
-        self.obstacles = generate_obstacles(map_size, 80)
+        self.map_size=map_size; self.pop_size=pop_size; self.max_frames=max_frames
+        total_w=SCREEN_W+UI_WIDTH
+        self.screen=pygame.display.set_mode((total_w,SCREEN_H))
+        pygame.display.set_caption("⚔️  AI Battle Royale — ULTRA Edition v2 (Modular)")
+        self.clock=pygame.time.Clock()
+
+        self.fonts={
+            "tiny":   pygame.font.SysFont("Arial",11),
+            "small":  pygame.font.SysFont("Arial",12,bold=True),
+            "normal": pygame.font.SysFont("Arial",14,bold=True),
+            "large":  pygame.font.SysFont("Arial",20,bold=True),
+            "title":  pygame.font.SysFont("Arial",28,bold=True),
+            "huge":   pygame.font.SysFont("Arial",46,bold=True),
+        }
+
+        self.camera=Camera(SCREEN_W,SCREEN_H,map_size)
+        self.camera.center_on(map_size/2,map_size/2)
+        self.camera_shake = 0
+
+        self.match_count=1
+        self.population=[Hero(i) for i in range(pop_size)]
+        self.obstacles=[]; self.items=[]
+        self.particles=[]; self.projectiles=[]
+        self.danger_zones=[]
+        self.dmg_texts=[]; self.kill_feed=[]
+        self.frame_count=0
+
+        self.hero_ui_rects=[]
+        self.max_radius=map_size*0.45
+        self.final_radius=450.0
+        self.safe_zone_radius=self.max_radius
+        self.total_phases=4
+        self.phase_duration=max_frames//self.total_phases
+        self.current_phase=0
+        self.phase_announce_timer=0
+
+        self.render_enabled=True
+        self.show_states=True
+        self.show_minimap=True
+        self.running=True
+        self.focus_camera=False
+        self.match_over=False
+
+        self._bg=self._make_bg()
+        self.obstacles=generate_obstacles(map_size,120)
         self.spawn_items()
-        for h in self.population:
-            h.reset(self.map_size)
-        self.match_over = False
-        
+        for h in self.population: h.reset(self.map_size)
+
+    def _make_bg(self):
+        surf=pygame.Surface((SCREEN_W,SCREEN_H))
+        for y in range(SCREEN_H):
+            r=y/SCREEN_H
+            c=lerp_color((7,11,19),(14,21,34),r)
+            pygame.draw.line(surf,c,(0,y),(SCREEN_W,y))
+        return surf
+
+    def add_kill(self, killer, victim, weapon):
+        self.kill_feed.insert(0,KillEntry(killer,victim,weapon))
+        if len(self.kill_feed)>8: self.kill_feed.pop()
 
     def spawn_items(self):
         self.items.clear()
-        item_id = 0
-        for _ in range(80): 
-            self.items.append(generate_random_weapon(item_id, self.map_size))
-            item_id += 1
-        for _ in range(100): 
-            x = random.uniform(80, self.map_size-80)
-            y = random.uniform(80, self.map_size-80)
-            self.items.append(HealthPotion(item_id, x, y, 40))
-            item_id += 1
+        iid=0
+        for _ in range(160):
+            self.items.append(generate_random_weapon(iid,self.map_size)); iid+=1
+        for _ in range(140):
+            x=random.uniform(85,self.map_size-85)
+            y=random.uniform(85,self.map_size-85)
+            self.items.append(HealthPotion(iid,x,y,65)); iid+=1
 
     def start_new_match(self):
-        print(f"\n--- TRẬN {self.match_count} KẾT THÚC ---")
-        winners = [h for h in self.population if h.is_alive]
+        winners=[h for h in self.population if h.is_alive]
         if winners:
-            w = winners[0]
-            w_name = w.equipped_weapon.name if w.equipped_weapon else "Tay không"
-            print(f"🏆 Người chiến thắng: Player {w.hero_id} | Kills: {w.kills} | Dmg: {w.damage_dealt} | VK: {w_name}")
+            w=winners[0]
+            wn=w.equipped_weapon.name if w.equipped_weapon else "Tay không"
+            print(f"🏆 [{w.hero_class.value}] {w.name} | K:{w.kills} | DMG:{int(w.damage_dealt)} | {wn}")
         else:
             print("💀 Hòa!")
-        total_kills = sum(h.kills for h in self.population)
-        print(f"📊 Tổng Kills: {total_kills} | Số người tham chiến: {self.pop_size}")
-        
-        self.match_count += 1
-        self.frame_count = 0
-        self.safe_zone_radius = self.max_radius
-        self.dmg_texts.clear()
-        self.animations.clear()
-        self.particles.clear()
-        self.projectiles.clear()
-
-        self.obstacles = generate_obstacles(self.map_size, 80)
-        
+        self.match_count+=1; self.frame_count=0
+        self.safe_zone_radius=self.max_radius
+        self.particles.clear(); self.projectiles.clear(); self.danger_zones.clear()
+        self.dmg_texts.clear(); self.kill_feed.clear()
+        self.current_phase=0; self.phase_announce_timer=0
+        self.obstacles=generate_obstacles(self.map_size,120)
         for h in self.population:
+            if random.random()<0.28:
+                h.hero_class=random.choice(list(HeroClass))
+                cfg=HERO_CLASS_CONFIG[h.hero_class]
+                h.color=cfg["color"]; h.glow_color=cfg["glow"]
+                h.shape_sides=cfg["sides"]; h.hero_size=cfg["size"]
+                h.skill_name=cfg["skill"]; h.skill_cd_max=cfg["skill_cd"]
             h.reset(self.map_size)
-            h.hero_id = random.randint(100, 999)
         self.spawn_items()
 
     def handle_events(self):
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                self.running = False
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_RETURN and self.match_over:
-                    self.match_over = False
-                    self.start_new_match()
-                elif event.key == pygame.K_SPACE:
-                    self.render_enabled = not self.render_enabled 
-                elif event.key == pygame.K_s:
-                    self.show_states = not self.show_states
-                elif event.key == pygame.K_m:
-                    self.show_minimap = not self.show_minimap
-                elif event.key == pygame.K_f:
-                    # Theo dõi Top 1 Kill
-                    self.focus_camera = not self.focus_camera
-                elif event.key == pygame.K_c:
-                    # Về giữa bản đồ
-                    self.camera.center_on(self.map_size/2, self.map_size/2)
-                    self.camera.following = None
-                    
-        # Di chuyển camera bằng mũi tên
-        keys = pygame.key.get_pressed()
-        dx, dy = 0, 0
-        if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-            dx -= 1
-        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-            dx += 1
-        if keys[pygame.K_UP] or keys[pygame.K_w]:
-            dy -= 1
-        if keys[pygame.K_DOWN] or keys[pygame.K_s if False else pygame.K_DOWN]:
-            dy += 1
-        if dx != 0 or dy != 0:
-            self.camera.move(dx, dy)
-            
-        # Nếu đang theo dõi 1 Hero
+        for ev in pygame.event.get():
+            if ev.type==pygame.QUIT: self.running=False
+            elif ev.type==pygame.MOUSEBUTTONDOWN and ev.button==1:
+                mx,my=ev.pos
+                for rect,th in self.hero_ui_rects:
+                    if rect.collidepoint(mx,my):
+                        self.camera.following=th; self.focus_camera=False; break
+            elif ev.type==pygame.KEYDOWN:
+                if ev.key==pygame.K_RETURN and self.match_over:
+                    self.match_over=False; self.start_new_match()
+                elif ev.key==pygame.K_SPACE: self.render_enabled=not self.render_enabled
+                elif ev.key==pygame.K_s: self.show_states=not self.show_states
+                elif ev.key==pygame.K_m: self.show_minimap=not self.show_minimap
+                elif ev.key==pygame.K_f: self.focus_camera=not self.focus_camera
+                elif ev.key==pygame.K_c:
+                    self.camera.center_on(self.map_size/2,self.map_size/2)
+                    self.camera.following=None
+
+        keys=pygame.key.get_pressed()
+        dx=dy=0
+        if keys[pygame.K_LEFT]  or keys[pygame.K_a]: dx-=1
+        if keys[pygame.K_RIGHT] or keys[pygame.K_d]: dx+=1
+        if keys[pygame.K_UP]    or keys[pygame.K_w]: dy-=1
+        if keys[pygame.K_DOWN]  or keys[pygame.K_s]: dy+=1
+        if dx or dy: self.camera.move(dx,dy)
+
         if self.camera.following:
             if self.camera.following.is_alive:
-                self.camera.center_on(self.camera.following.x, self.camera.following.y)
+                self.camera.center_on(self.camera.following.x,self.camera.following.y,smooth=True)
             else:
-                self.camera.following = None
+                self.camera.following=None
 
     def draw(self):
-        if not self.render_enabled:
-            return
-            
-        self.screen.fill((20, 25, 30))
+        if not self.render_enabled: return
         
-        cam = self.camera
-        
-        # Lưới bản đồ
-        grid_size = 200
-        start_x = int(cam.x // grid_size) * grid_size
-        start_y = int(cam.y // grid_size) * grid_size
-        for gx in range(start_x, int(cam.x + self.screen_w) + grid_size, grid_size):
-            sx, _ = cam.world_to_screen(gx, 0)
-            pygame.draw.line(self.screen, (35, 40, 45), (sx, 0), (sx, self.screen_h))
-        for gy in range(start_y, int(cam.y + self.screen_h) + grid_size, grid_size):
-            _, sy = cam.world_to_screen(0, gy)
-            pygame.draw.line(self.screen, (35, 40, 45), (0, sy), (self.screen_w, sy))
-            
-        # Vòng bo
-        center_x, center_y = self.map_size/2, self.map_size/2
-        scx, scy = cam.world_to_screen(center_x, center_y)
-        pygame.draw.circle(self.screen, (50, 150, 255), (scx, scy), int(self.safe_zone_radius), 2)
-        
-        # Vật cản (Vẽ bóng đổ trước, vẽ hình sau)
-        for obs in self.obstacles:
-            if cam.is_rect_visible(obs.x, obs.y, obs.w, obs.h):
-                sx, sy = cam.world_to_screen(obs.x, obs.y)
-                # Vẽ bóng đổ (Shadow)
-                pygame.draw.rect(self.screen, (10, 15, 20), (sx + 8, sy + 8, obs.w, obs.h), border_radius=4)
-                # Vẽ khối vật cản (Bo góc mềm mại)
-                pygame.draw.rect(self.screen, obs.color, (sx, sy, obs.w, obs.h), border_radius=4)
-                # Viền sáng 3D
-                pygame.draw.rect(self.screen, (min(255, obs.color[0]+40), min(255, obs.color[1]+40), min(255, obs.color[2]+40)), 
-                                 (sx, sy, obs.w, obs.h), 2, border_radius=4)
+        shake_x = random.uniform(-self.camera_shake, self.camera_shake)
+        shake_y = random.uniform(-self.camera_shake, self.camera_shake)
+        self.camera.x += shake_x; self.camera.y += shake_y
 
-        # Vật cản
+        cam=self.camera; scr=self.screen
+
+        scr.blit(self._bg,(0,0))
+
+        gs=200; gc=(26,36,52)
+        sx0=int(cam.x//gs)*gs; sy0=int(cam.y//gs)*gs
+        for gx in range(sx0,int(cam.x+SCREEN_W)+gs,gs):
+            px,_=cam.world_to_screen(gx,0)
+            pygame.draw.line(scr,gc,(px,0),(px,SCREEN_H))
+        for gy in range(sy0,int(cam.y+SCREEN_H)+gs,gs):
+            _,py=cam.world_to_screen(0,gy)
+            pygame.draw.line(scr,gc,(0,py),(SCREEN_W,py))
+
+        cx,cy=self.map_size/2,self.map_size/2
+        scx,scy=cam.world_to_screen(cx,cy)
+        zr=int(self.safe_zone_radius)
+        pulse=abs(math.sin(self.frame_count*0.04))
+
+        ds=pygame.Surface((SCREEN_W,SCREEN_H),pygame.SRCALPHA)
+        if zr>0:
+            ds.fill((205,22,22,18))
+            pygame.draw.circle(ds,(0,0,0,0),(scx,scy),zr)
+        scr.blit(ds,(0,0))
+
+        zc=(int(32+22*pulse),int(105+52*pulse),int(205+50*pulse))
+        if zr>0:
+            pygame.draw.circle(scr,zc,(scx,scy),zr,2)
+            pygame.draw.circle(scr,(zc[0]//2,zc[1]//2,zc[2]//2),(scx,scy),zr+5,1)
+            pygame.draw.circle(scr,(zc[0]//3,zc[1]//3,zc[2]//3),(scx,scy),zr+9,1)
+
+        for dz in self.danger_zones:
+            if dz["type"] == "POISON":
+                d_sx, d_sy = cam.world_to_screen(dz["x"], dz["y"])
+                pygame.draw.circle(scr, (50,200,50,50), (d_sx, d_sy), int(dz["radius"]))
+            elif dz["type"] == "TORNADO":
+                d_sx, d_sy = cam.world_to_screen(dz["x"], dz["y"])
+                pygame.draw.circle(scr, (150,150,150,30), (d_sx, d_sy), int(dz["radius"]))
+
         for obs in self.obstacles:
-            if cam.is_rect_visible(obs.x, obs.y, obs.w, obs.h):
-                sx, sy = cam.world_to_screen(obs.x, obs.y)
-                pygame.draw.rect(self.screen, obs.color, (sx, sy, obs.w, obs.h))
-                # Viền sáng hơn
-                pygame.draw.rect(self.screen, (obs.color[0]+30, obs.color[1]+30, obs.color[2]+30), (sx, sy, obs.w, obs.h), 1)
-        
-        # Items
+            if cam.is_rect_visible(obs.x,obs.y,obs.w,obs.h):
+                obs.draw(scr,cam)
+
         for it in self.items:
-            if not it.is_picked_up and cam.is_visible(it.x, it.y):
-                sx, sy = cam.world_to_screen(it.x, it.y)
-                if it.item_type == "WEAPON":
-                    pygame.draw.rect(self.screen, it.color, (sx-4, sy-4, 8, 8))
-                elif it.item_type == "POTION":
-                    pygame.draw.circle(self.screen, (50, 255, 50), (sx, sy), 5)
-                    pygame.draw.circle(self.screen, (255, 255, 255), (sx, sy), 2)
-                    
-        # Heroes
-        alive_count = 0
+            if not it.is_picked_up and cam.is_visible(it.x,it.y):
+                it.bob_timer+=0.08
+                isx,isy=cam.world_to_screen(it.x,it.y)
+                bob=int(math.sin(it.bob_timer)*3)
+                if it.item_type=="WEAPON":
+                    from utils import draw_glow
+                    draw_glow(scr,it.color,isx,isy+bob,14,65)
+                    pygame.draw.rect(scr,(8,8,14),(isx-5,isy-5+bob+2,10,10))
+                    pygame.draw.rect(scr,it.color,(isx-4,isy-4+bob,8,8))
+                    hl=(min(255,it.color[0]+65),min(255,it.color[1]+65),min(255,it.color[2]+65))
+                    pygame.draw.rect(scr,hl,(isx-4,isy-4+bob,8,8),1)
+                else:
+                    from utils import draw_glow
+                    draw_glow(scr,(52,255,52),isx,isy+bob,11,55)
+                    pygame.draw.circle(scr,(18,18,18),(isx+2,isy+2+bob),7)
+                    pygame.draw.circle(scr,(0,182,42),(isx,isy+bob),7)
+                    pygame.draw.circle(scr,(105,255,125),(isx,isy+bob),4)
+                    pygame.draw.circle(scr,(255,255,255),(isx-2,isy-2+bob),2)
+
+        for p in self.particles: p.draw(scr,cam)
+
+        alive_count=0
         for h in self.population:
             if h.is_alive:
-                alive_count += 1
-                if not cam.is_visible(h.x, h.y):
-                    continue
-                    
-                sx, sy = cam.world_to_screen(h.x, h.y)
-                draw_color = (255, 50, 50) if h.hit_timer > 0 else h.color
-                
-                # Bóng đổ nhân vật
-                pygame.draw.circle(self.screen, (10, 15, 20), (sx + 4, sy + 4), 10)
-                
-                if h.equipped_weapon: # Vẽ vũ khí
-                    pygame.draw.circle(self.screen, (30, 30, 30), (sx+7, sy-5), 5) # Bóng vũ khí
-                    pygame.draw.circle(self.screen, h.equipped_weapon.color, (sx+6, sy-6), 4)
+                alive_count+=1
+                h.draw(scr,cam,self.fonts,self.show_states,self.frame_count)
 
-                pygame.draw.circle(self.screen, draw_color, (sx, sy), 10)
-                
-                # Thanh máu (Có viền đen bọc ngoài)
-                hp_ratio = max(0, h.hp / h.max_hp)
-                pygame.draw.rect(self.screen, (0, 0, 0), (sx-13, sy-23, 26, 6)) # Viền đen
-                pygame.draw.rect(self.screen, (200, 50, 50), (sx-12, sy-22, 24, 4)) # Nền đỏ
-                pygame.draw.rect(self.screen, (50, 200, 50), (sx-12, sy-22, int(24*hp_ratio), 4)) # Máu xanh
-                
-                if h.equipped_weapon:
-                    pygame.draw.circle(self.screen, h.equipped_weapon.color, (sx+6, sy-6), 4)
+        for p in self.projectiles: p.draw(scr,cam)
+        for dt in self.dmg_texts: dt.draw(scr,cam,self.fonts["normal"])
 
-                pygame.draw.circle(self.screen, draw_color, (sx, sy), 10)
-                
-                hp_ratio = max(0, h.hp / h.max_hp)
-                pygame.draw.rect(self.screen, (200,0,0), (sx-12, sy-22, 24, 4))
-                pygame.draw.rect(self.screen, (0,200,0), (sx-12, sy-22, int(24*hp_ratio), 4))
-                
-                st_ratio = max(0, h.stamina / h.max_stamina)
-                pygame.draw.rect(self.screen, (0,100,255), (sx-12, sy-16, int(24*st_ratio), 2))
-                
-                if self.show_states:
-                    c_text = (255,255,255)
-                    if h.state_label == "FLEEING":
-                        c_text = (255, 100, 100)
-                    elif h.state_label == "COMBAT":
-                        c_text = (255, 200, 50)
-                    elif h.state_label == "RESTING":
-                        c_text = (255,255,255)
+        self.camera.x -= shake_x; self.camera.y -= shake_y
 
-                    # Tên quái
-                    name_text = f"P{h.hero_id}"
-                    name_surf = self.small_font.render(name_text, True, c_text)
-                    self.screen.blit(name_surf, (sx - name_surf.get_width() // 2, sy - 38))
-
-                    # Trạng thái
-                    st_surf = self.small_font.render(h.state_label, True, c_text)
-                    self.screen.blit(st_surf, (sx - st_surf.get_width() // 2, sy + 26))
-
-                    # Tên vũ khí
-                    weapon_name = h.equipped_weapon.name if h.equipped_weapon else "Tay không"
-                    weapon_surf = self.small_font.render(weapon_name, True, c_text)
-                    self.screen.blit(weapon_surf, (sx - weapon_surf.get_width() // 2, sy + 12))
-        
-        # Particles
-        for p in list(self.particles):
-            if cam.is_visible(p.x, p.y):
-                sx, sy = cam.world_to_screen(p.x, p.y)
-                pygame.draw.rect(self.screen, (200, 0, 0), (sx, sy, 3, 3))
-            p.x += p.vx
-            p.y += p.vy
-            p.life -= 1
-            if p.life <= 0:
-                self.particles.remove(p)
-
-        # Animations
-        for anim in list(self.animations):
-            if cam.is_visible(anim.x1, anim.y1) or cam.is_visible(anim.x2, anim.y2):
-                sx1, sy1 = cam.world_to_screen(anim.x1, anim.y1)
-                sx2, sy2 = cam.world_to_screen(anim.x2, anim.y2)
-                if anim.weapon_class == "RANGED":
-                    progress = 1.0 - (anim.life / 25.0)
-                    cx = sx1 + (sx2 - sx1) * progress
-                    cy = sy1 + (sy2 - sy1) * progress
-                    pygame.draw.circle(self.screen, anim.color, (int(cx), int(cy)), 4)
-                else:
-                    pygame.draw.line(self.screen, (255,255,255), (sx1, sy1), (sx2, sy2), 4)
-            anim.life -= 1
-            if anim.life <= 0:
-                self.animations.remove(anim)
-        # Vẽ đạn bay (Projectiles)
-        for p in self.projectiles:
-            if cam.is_visible(p.x, p.y):
-                sx, sy = cam.world_to_screen(p.x, p.y)
-                
-                # Vẽ đuôi đạn (vệt sáng mờ phía sau)
-                tail_x, tail_y = cam.world_to_screen(p.x - p.vx * 1.5, p.y - p.vy * 1.5)
-                pygame.draw.line(self.screen, p.color, (sx, sy), (tail_x, tail_y), 3)
-                
-                # Vẽ đầu đạn
-                pygame.draw.circle(self.screen, (255, 255, 255), (int(sx), int(sy)), p.hitbox_radius)
-                pygame.draw.circle(self.screen, p.color, (int(sx), int(sy)), p.hitbox_radius, 1)
-
-        # Damage Texts
-        for dt in list(self.dmg_texts):
-            if cam.is_visible(dt.x, dt.y):
-                sx, sy = cam.world_to_screen(dt.x, dt.y)
-                surface = self.font.render(dt.text, True, dt.color)
-                self.screen.blit(surface, (sx, sy))
-            dt.y -= 0.5 
-            dt.life -= 1
-            if dt.life <= 0:
-                self.dmg_texts.remove(dt)
-
-        # ==================== MINIMAP ====================
+        # ====== MINIMAP ======
         if self.show_minimap:
-            mm_size = 180
-            mm_x = self.screen_w - mm_size - 10
-            mm_y = self.screen_h - mm_size - 10
-            mm_scale = mm_size / self.map_size
-            
-            pygame.draw.rect(self.screen, (10, 15, 20), (mm_x, mm_y, mm_size, mm_size))
-            pygame.draw.rect(self.screen, (80, 80, 80), (mm_x, mm_y, mm_size, mm_size), 1)
-            
-            # Bo trên minimap
-            pygame.draw.circle(self.screen, (50, 100, 200), 
-                (int(mm_x + center_x * mm_scale), int(mm_y + center_y * mm_scale)), 
-                int(self.safe_zone_radius * mm_scale), 1)
-            
-            # Obstacles trên minimap
+            ms=195; mx=SCREEN_W-ms-10; my=SCREEN_H-ms-10
+            msc=ms/self.map_size
+            msurf=pygame.Surface((ms,ms),pygame.SRCALPHA)
+            msurf.fill((8,12,20,210))
+            scr.blit(msurf,(mx,my))
+            pygame.draw.rect(scr,(55,75,100),(mx,my,ms,ms),1)
+            zmr=int(self.safe_zone_radius*msc)
+            zcx=int(mx+cx*msc); zcy=int(my+cy*msc)
+            if zmr>0: pygame.draw.circle(scr,(52,105,205),(zcx,zcy),zmr,1)
             for obs in self.obstacles:
-                ox = int(mm_x + obs.x * mm_scale)
-                oy = int(mm_y + obs.y * mm_scale)
-                ow = max(1, int(obs.w * mm_scale))
-                oh = max(1, int(obs.h * mm_scale))
-                pygame.draw.rect(self.screen, (60, 60, 60), (ox, oy, ow, oh))
-            
-            # Heroes trên minimap
+                ox=int(mx+obs.x*msc); oy=int(my+obs.y*msc)
+                ow=max(1,int(obs.w*msc)); oh=max(1,int(obs.h*msc))
+                oc=(32,82,32) if obs.obs_type=="TREE" else (58,58,68)
+                pygame.draw.rect(scr,oc,(ox,oy,ow,oh))
+            for it in self.items:
+                if not it.is_picked_up:
+                    iix=int(mx+it.x*msc); iiy=int(my+it.y*msc)
+                    ic=(205,205,82) if it.item_type=="WEAPON" else (52,205,52)
+                    pygame.draw.rect(scr,ic,(iix,iiy,2,2))
             for h in self.population:
                 if h.is_alive:
-                    hx = int(mm_x + h.x * mm_scale)
-                    hy = int(mm_y + h.y * mm_scale)
-                    pygame.draw.rect(self.screen, h.color, (hx, hy, 2, 2))
-            
-            # Viewport trên minimap
-            vx = int(mm_x + cam.x * mm_scale)
-            vy = int(mm_y + cam.y * mm_scale)
-            vw = int(self.screen_w * mm_scale)
-            vh = int(self.screen_h * mm_scale)
-            pygame.draw.rect(self.screen, (255, 255, 255), (vx, vy, vw, vh), 1)
-                
-        # ==================== INFO BOARD ====================
-        board_x = self.screen_w
-        pygame.draw.rect(self.screen, (15, 20, 25), (board_x, 0, self.ui_width, self.screen_h))
-        pygame.draw.line(self.screen, (80, 80, 80), (board_x, 0), (board_x, self.screen_h), 2)
-        
-        y_off = 15
-        title = self.title_font.render(f"TRẬN #{self.match_count}", True, (255,215,0))
-        self.screen.blit(title, (board_x + 15, y_off))
-        y_off += 35
-        
-        info_lines = [
-            f"Còn sống: {alive_count} / {self.pop_size}",
-            f"Bo: {int(self.safe_zone_radius)}m",
-            f"Map: {self.map_size}x{self.map_size}",
-            "",
-            "Phím tắt:",
-            "WASD/Mũi tên: Di chuyển cam",
-            "F: Theo dõi Top 1",
-            "C: Về giữa bản đồ",
-            "M: Bật/Tắt Minimap",
-            "S: Bật/Tắt Trạng thái",
-            "Space: Bật/Tắt Render",
-        ]
-        for text in info_lines:
-            surface = self.small_font.render(text, True, (180, 180, 180))
-            self.screen.blit(surface, (board_x + 15, y_off))
-            y_off += 18
-            
-        y_off += 15
-        self.screen.blit(self.font.render("--- LEADERBOARD ---", True, (255,255,255)), (board_x + 15, y_off))
-        y_off += 25
-        
-        sorted_heroes = sorted([h for h in self.population if h.is_alive], key=lambda x: (x.kills, x.damage_dealt), reverse=True)
-        
-        for i, h in enumerate(sorted_heroes[:5]): 
-            w_name = h.equipped_weapon.name if h.equipped_weapon else "Không"
-            c = (0, 255, 0) if i == 0 else (200, 200, 200)
-            
-            self.screen.blit(self.font.render(f"#{i+1} P{h.hero_id} ({h.kills}K)", True, c), (board_x + 15, y_off))
-            y_off += 16
-            self.screen.blit(self.small_font.render(f"HP:{int(h.hp)} VK:{w_name} [{h.state_label}]", True, (140, 140, 140)), (board_x + 25, y_off))
-            y_off += 22
+                    hx=int(mx+h.x*msc); hy=int(my+h.y*msc)
+                    hc=(0,255,255) if cam.following==h else h.color
+                    sz=3 if cam.following==h else 2
+                    pygame.draw.rect(scr,hc,(hx,hy,sz,sz))
+            vx=int(mx+cam.x*msc); vy=int(my+cam.y*msc)
+            vw=int(SCREEN_W*msc); vh=int(SCREEN_H*msc)
+            pygame.draw.rect(scr,(205,205,205),(vx,vy,vw,vh),1)
+            scr.blit(self.fonts["tiny"].render("MINIMAP",True,(95,115,140)),(mx+5,my+3))
 
-        # ==================== END MATCH STATS ====================
+        # ====== KILL FEED ======
+        for i,kf in enumerate(self.kill_feed):
+            ratio=kf.life/kf.max_life
+            a=int(255*min(1.0,ratio*3))
+            txt=f"☠ {kf.killer[:14]} → {kf.victim[:14]}  [{kf.weapon}]"
+            ks=self.fonts["tiny"].render(txt,True,(255,int(182*ratio),int(105*ratio)))
+            ks.set_alpha(a)
+            bgs=pygame.Surface((ks.get_width()+10,ks.get_height()+4),pygame.SRCALPHA)
+            bgs.fill((0,0,0,int(125*ratio)))
+            scr.blit(bgs,(8,8+i*19-2))
+            scr.blit(ks,(12,8+i*19))
+
+        # ====== HEADER ======
+        hh=38
+        hsurf=pygame.Surface((SCREEN_W,hh),pygame.SRCALPHA)
+        hsurf.fill((0,0,0,165))
+        scr.blit(hsurf,(0,0))
+        pygame.draw.line(scr,(48,78,112),(0,hh),(SCREEN_W,hh),1)
+
+        pnames=["Phase 1","Phase 2","Phase 3","FINAL"]
+        pname=pnames[min(self.current_phase,3)]
+        items=[
+            (f"⚔️  TRẬN #{self.match_count}",(255,215,0)),
+            (f"👥  {alive_count} / {self.pop_size}",(105,225,255)),
+            (f"🔵  {int(self.safe_zone_radius)}m",(82,165,255)),
+            (f"🎯  {pname}",(205,145,255)),
+        ]
+        hxo=14
+        for text,col in items:
+            ts=self.fonts["normal"].render(text,True,col)
+            scr.blit(ts,(hxo,hh//2-ts.get_height()//2)); hxo+=ts.get_width()+28
+        fps=int(self.clock.get_fps())
+        fc=(52,255,52) if fps>=45 else (255,205,52) if fps>=25 else (255,52,52)
+        fs=self.fonts["small"].render(f"FPS:{fps}",True,fc)
+        scr.blit(fs,(SCREEN_W-fs.get_width()-12,hh//2-fs.get_height()//2))
+
+        # ====== PHASE ANNOUNCEMENT ======
+        if self.phase_announce_timer>0:
+            ratio=self.phase_announce_timer/120
+            alph=int(255*min(1.0,ratio*4)*min(1.0,(1-ratio)*4+0.2))
+            pf=["🔵 PHASE 1 — BO THU!","🟡 PHASE 2 — NGUY HIỂM!","🟠 PHASE 3 — QUYẾT CHIẾN!","🔴 FINAL ZONE!"]
+            atext=pf[min(self.current_phase-1,3)]
+            asurf=self.fonts["huge"].render(atext,True,(255,220,52))
+            asurf.set_alpha(alph)
+            sc=1.0+0.18*math.sin(ratio*math.pi)
+            aw=int(asurf.get_width()*sc); ah=int(asurf.get_height()*sc)
+            ascl=pygame.transform.scale(asurf,(aw,ah))
+            scr.blit(ascl,(SCREEN_W//2-aw//2,SCREEN_H//2-ah//2))
+            self.phase_announce_timer-=1
+
+        # ====== SIDE PANEL ======
+        bx=SCREEN_W
+        psurf=pygame.Surface((UI_WIDTH,SCREEN_H),pygame.SRCALPHA)
+        psurf.fill((9,14,22,235))
+        scr.blit(psurf,(bx,0))
+        for i in range(4):
+            pygame.draw.line(scr,(55-i*10,88-i*15,125-i*20),(bx+i,0),(bx+i,SCREEN_H),1)
+
+        yo=45
+        scr.blit(self.fonts["normal"].render("── CLASS LEGEND ──",True,(78,98,122)),(bx+12,yo))
+        yo+=20
+        for cls,cfg in HERO_CLASS_CONFIG.items():
+            cnt=sum(1 for h in self.population if h.is_alive and h.hero_class==cls)
+            draw_poly(scr,cfg["color"],bx+15,yo+6,5,cfg["sides"])
+            cs=self.fonts["tiny"].render(f"  {cls.value}: {cnt}",True,cfg["color"])
+            scr.blit(cs,(bx+22,yo)); yo+=14
+
+        yo+=6
+        pygame.draw.line(scr,(38,55,72),(bx+8,yo),(bx+UI_WIDTH-8,yo),1); yo+=10
+        scr.blit(self.fonts["normal"].render("── TOP FIGHTERS ──",True,(0,200,225)),(bx+12,yo)); yo+=22
+
+        self.hero_ui_rects.clear()
+        living=sorted([h for h in self.population if h.is_alive],key=lambda x:(x.kills,x.damage_dealt),reverse=True)
+
+        for h in living[:10]:
+            wn=h.equipped_weapon.name if h.equipped_weapon else "Tay không"
+            sel=(cam.following==h)
+            irect=pygame.Rect(bx+8,yo,UI_WIDTH-16,46)
+            self.hero_ui_rects.append((irect,h))
+
+            bgc=(24,54,72,205) if sel else (17,24,34,185)
+            isurf=pygame.Surface((irect.w,irect.h),pygame.SRCALPHA)
+            isurf.fill(bgc)
+            scr.blit(isurf,(irect.x,irect.y))
+            bc=(0,205,235) if sel else (38,55,72)
+            pygame.draw.rect(scr,bc,irect,1,border_radius=4)
+
+            draw_poly(scr,h.color,bx+20,yo+14,5,h.shape_sides,h.rotation)
+            tc=(0,230,255) if sel else (225,225,242)
+            scr.blit(self.fonts["small"].render(f"{h.name} ({h.kills}K)",True,tc),(bx+30,yo+4))
+
+            bw2=UI_WIDTH-62
+            hpr=max(0,h.hp/h.max_hp)
+            hpc=lerp_color((200,32,32),lerp_color((235,185,22),(32,205,82),min(1.0,hpr*2)),max(0,hpr*2-1))
+            pygame.draw.rect(scr,(32,0,0),(bx+30,yo+20,bw2,4))
+            pygame.draw.rect(scr,hpc,(bx+30,yo+20,int(bw2*hpr),4))
+
+            skr=1.0-(h.skill_cd/max(1,h.skill_cd_max))
+            pygame.draw.rect(scr,(32,26,0),(bx+30,yo+26,bw2,3))
+            pygame.draw.rect(scr,(205,185,32),(bx+30,yo+26,int(bw2*skr),3))
+
+            stat=f"HP:{int(h.hp)} | {wn[:14]}"
+            scr.blit(self.fonts["tiny"].render(stat,True,(128,138,162)),(bx+30,yo+32))
+            yo+=50
+
+        ctrls=["WASD/↑↓←→ : Di chuyển camera","F : Auto-follow top","Click tên : Follow hero",
+               "S : Ẩn/hiện nhãn","M : Ẩn/hiện minimap","SPACE : Tắt render","C : Reset camera"]
+        yc=SCREEN_H-len(ctrls)*14-10
+        pygame.draw.line(scr,(38,55,72),(bx+8,yc-8),(bx+UI_WIDTH-8,yc-8),1)
+        for ctrl in ctrls:
+            scr.blit(self.fonts["tiny"].render(ctrl,True,(68,78,95)),(bx+10,yc)); yc+=14
+
+        # ====== MATCH OVER ======
         if self.match_over:
-            # Làm mờ nền
-            overlay = pygame.Surface((self.screen_w + self.ui_width, self.screen_h))
-            overlay.set_alpha(200)
-            overlay.fill((0, 0, 0))
-            self.screen.blit(overlay, (0, 0))
-            
-            # Vẽ bảng
-            cx = (self.screen_w + self.ui_width) // 2
-            pygame.draw.rect(self.screen, (30, 35, 40), (cx - 250, 100, 500, 550), border_radius=10)
-            pygame.draw.rect(self.screen, (255, 215, 0), (cx - 250, 100, 500, 550), 2, border_radius=10)
-            
-            title = self.title_font.render(f"KẾT QUẢ TRẬN {self.match_count}", True, (255, 215, 0))
-            self.screen.blit(title, (cx - title.get_width()//2, 130))
-            
-            headers = self.font.render("Hạng    Người chơi      Kills    Sát thương    Vũ khí", True, (150, 150, 150))
-            self.screen.blit(headers, (cx - 200, 180))
-            pygame.draw.line(self.screen, (100, 100, 100), (cx - 210, 200), (cx + 210, 200))
-            
-            sorted_heroes = sorted(self.population, key=lambda x: (x.is_alive, x.kills, x.damage_dealt), reverse=True)
-            
-            y_stat = 220
-            for i, h in enumerate(sorted_heroes[:10]):
-                w_name = h.equipped_weapon.name if h.equipped_weapon else "Tay không"
-                color = (0, 255, 0) if h.is_alive else (200, 200, 200)
-                if i == 0: color = (255, 215, 0) # Top 1 màu vàng
-                
-                row_text = f"#{i+1:<7} P{h.hero_id:<14} {h.kills:<8} {int(h.damage_dealt):<13} {w_name}"
-                stat_surf = self.font.render(row_text, True, color)
-                self.screen.blit(stat_surf, (cx - 200, y_stat))
-                y_stat += 30
-                
-            prompt = self.title_font.render("NHẤN [ENTER] ĐỂ BẮT ĐẦU VÁN MỚI", True, (255, 255, 255))
-            self.screen.blit(prompt, (cx - prompt.get_width()//2, 580))
-            
+            ov=pygame.Surface((SCREEN_W+UI_WIDTH,SCREEN_H),pygame.SRCALPHA)
+            ov.fill((0,0,0,185))
+            scr.blit(ov,(0,0))
+            mcx=(SCREEN_W+UI_WIDTH)//2
+            pw,ph=565,595
+            pnl=pygame.Surface((pw,ph),pygame.SRCALPHA)
+            pnl.fill((14,20,28,245))
+            scr.blit(pnl,(mcx-pw//2,72))
+            pygame.draw.rect(scr,(255,215,0),(mcx-pw//2,72,pw,ph),2,border_radius=9)
+            pygame.draw.rect(scr,(105,82,0),(mcx-pw//2+3,75,pw-6,ph-6),1,border_radius=7)
+
+            ts=self.fonts["title"].render(f"🏆 KẾT QUẢ TRẬN #{self.match_count}",True,(255,215,0))
+            scr.blit(ts,(mcx-ts.get_width()//2,98))
+
+            hs2=self.fonts["small"].render(f"{'#':<4}{'Tên':<20}{'Class':<11}{'K':<6}{'DMG':<8}Vũ Khí",True,(120,132,152))
+            scr.blit(hs2,(mcx-252,148))
+            pygame.draw.line(scr,(58,78,102),(mcx-256,166),(mcx+256,166),1)
+
+            sh=sorted(self.population,key=lambda x:(x.is_alive,x.kills,x.damage_dealt),reverse=True)
+            ys=172
+            for i,h in enumerate(sh[:13]):
+                wn=h.equipped_weapon.name if h.equipped_weapon else "Tay không"
+                if i==0: rc=(255,215,0)
+                elif i==1: rc=(192,192,192)
+                elif i==2: rc=(205,128,52)
+                elif h.is_alive: rc=(105,205,105)
+                else: rc=(140,140,140)
+                row=f"{i+1:<4}{h.name:<20}{h.hero_class.value:<11}{h.kills:<6}{int(h.damage_dealt):<8}{wn}"
+                draw_poly(scr,h.color,mcx-258,ys+6,4,h.shape_sides)
+                scr.blit(self.fonts["tiny"].render(row,True,rc),(mcx-250,ys)); ys+=24
+
+            palph=int(185+70*abs(math.sin(self.frame_count*0.055)))
+            ps=self.fonts["large"].render("[ ENTER ] → VÁN MỚI",True,(205,225,255))
+            ps.set_alpha(palph)
+            scr.blit(ps,(mcx-ps.get_width()//2,615))
+
         pygame.display.flip()
 
     def update(self):
         if self.match_over:
-            return # Dừng update game khi hiển thị bảng thống kê
+            self.frame_count+=1; return
 
-        alive_count = sum(1 for h in self.population if h.is_alive)
-        # Bỏ giới hạn max_frames để trận đấu tiếp tục cho đến khi có người thắng
-        if alive_count <= 1:
-            self.match_over = True 
-            return
+        alive=sum(1 for h in self.population if h.is_alive)
+        if alive<=1:
+            self.match_over=True; return
 
-        #Hệ thống theo dỗi camera
-        if(self.focus_camera):
-            alive = [h for h in self.population if h.is_alive]
-            if alive:
-                top = max(alive, key=lambda h: (h.kills, h.damage_dealt))
-                self.camera.following = top
-            
-        # ==================== HỆ THỐNG BO THU THEO ĐỢT ====================
-        # Xác định đợt hiện tại (Phase)
-        current_phase = min(self.frame_count // self.phase_duration, self.total_phases - 1)
-        time_in_phase = self.frame_count % self.phase_duration
-        
-        # 60% thời gian đầu của mỗi đợt là CHỜ, 40% thời gian sau là THU BO
-        wait_time = self.phase_duration * 0.6  
-        
-        # Tính toán mức bán kính bắt đầu và kết thúc của đợt này
-        drop_per_phase = (self.max_radius - self.final_radius) / self.total_phases
-        start_r = self.max_radius - (drop_per_phase * current_phase)
-        end_r = self.max_radius - (drop_per_phase * (current_phase + 1))
-        
-        if time_in_phase > wait_time:
-            # Bắt đầu từ từ thu bo về mức end_r
-            shrink_time_left = self.phase_duration - wait_time
-            shrink_rate = (start_r - end_r) / shrink_time_left
-            self.safe_zone_radius = max(end_r, self.safe_zone_radius - shrink_rate)
-        # ==================================================================
-            
+        if self.focus_camera:
+            al=[h for h in self.population if h.is_alive]
+            if al:
+                self.camera.following=max(al,key=lambda h:(h.kills,h.damage_dealt))
+                
+        if self.camera_shake > 0: self.camera_shake = max(0, self.camera_shake - 0.5)
+
+        np=min(self.frame_count//self.phase_duration,self.total_phases-1)
+        if np>self.current_phase:
+            self.current_phase=np; self.phase_announce_timer=120
+
+        tip=self.frame_count%self.phase_duration
+        wt=self.phase_duration*0.6
+        dpp=(self.max_radius-self.final_radius)/self.total_phases
+        sr=self.max_radius-(dpp*self.current_phase)
+        er=self.max_radius-(dpp*(self.current_phase+1))
+        if tip>wt:
+            st=self.phase_duration-wt
+            self.safe_zone_radius=max(er,self.safe_zone_radius-(sr-er)/st)
+
         for h in self.population:
-            h.update(self.map_size, self.items, self.population, self, self.safe_zone_radius, self.obstacles)
+            h.update(self.map_size,self.items,self.population,self,self.safe_zone_radius,self.obstacles)
 
-        # Cập nhật đường đạn bay và va chạm
-        for p in list(self.projectiles):
-            p.x += p.vx
-            p.y += p.vy
-            p.life -= 1
-            hit = False
+        new_dz = []
+        for dz in self.danger_zones:
+            dz["timer"] -= 1
+            if dz["timer"] <= 0:
+                if dz["type"] == "METEOR":
+                    self._explosion(dz["x"], dz["y"], dz["dmg"], dz["shooter"], dz["radius"])
+                    self.camera_shake = 12
+                continue
             
-            # 1. Đạn va chạm vật cản
+            if dz["type"] == "POISON":
+                if self.frame_count % 5 == 0:
+                    ang = random.uniform(0, math.pi*2)
+                    r = random.uniform(0, dz["radius"])
+                    self.particles.append(SmokeParticle(dz["x"] + math.cos(ang)*r, dz["y"] + math.sin(ang)*r, (50,200,50)))
+                for h in self.population:
+                    if h.is_alive and h != dz["shooter"]:
+                        if math.hypot(h.x-dz["x"], h.y-dz["y"]) < dz["radius"]:
+                            h.poison_timer = max(h.poison_timer, 60)
+            
+            elif dz["type"] == "TORNADO":
+                dz["x"] += dz.get("vx", 0)
+                dz["y"] += dz.get("vy", 0)
+                for _ in range(2): self.particles.append(WhirlwindParticle(dz["x"], dz["y"], (200,200,200)))
+                for h in self.population:
+                    if h.is_alive and h != dz["shooter"]:
+                        dist = math.hypot(h.x-dz["x"], h.y-dz["y"])
+                        if dist < dz["radius"]:
+                            if self.frame_count % 10 == 0:
+                                dmg = dz["dmg"]
+                                if h.shield_active: dmg = max(1, int(dmg*0.3))
+                                h.hp -= dmg; h.hit_timer = 5; dz["shooter"].damage_dealt += dmg
+                                self.dmg_texts.append(DamageText(h.x,h.y-15, str(dmg), (200,200,200)))
+                                if h.hp <= 0:
+                                    h.is_alive=False; dz["shooter"].kills+=1
+                                    self.add_kill(dz["shooter"].name, h.name, "Tornado 🌪️")
+                            h.x += dz.get("vx", 0) * 1.5
+                            h.y += dz.get("vy", 0) * 1.5
+
+            new_dz.append(dz)
+        self.danger_zones = new_dz
+
+        new_proj=[]
+        for p in self.projectiles:
+            if p.proj_type == "LASER":
+                p.life -= 2
+                if p.life <= 0: continue
+                new_proj.append(p)
+                continue
+                
+            p.step()
+            if p.life<=0: continue
+            hit=False
             for obs in self.obstacles:
-                if obs.collides_point(p.x, p.y, p.hitbox_radius):
-                    hit = True
-                    break
-                    
-            # 2. Đạn va chạm Hero (Hitbox)
+                if obs.collides_point(p.x,p.y,p.hitbox_radius):
+                    for _ in range(5): self.particles.append(SparkParticle(p.x,p.y,(205,205,105)))
+                    if p.proj_type=="EXPLOSIVE": 
+                        self._explosion(p.x,p.y,p.damage,p.shooter,62)
+                        self.camera_shake = 5
+                    hit=True; break
             if not hit:
                 for h in self.population:
-                    if h.is_alive and h != p.shooter:
-                        dist = math.hypot(p.x - h.x, p.y - h.y)
-                        if dist < 10 + p.hitbox_radius:  # 10 là bán kính của Hero
-                            # Đạn trúng mục tiêu, gây sát thương
-                            h.hp -= p.damage
-                            h.hit_timer = 10
-                            p.shooter.damage_dealt += p.damage
-                            
-                            self.dmg_texts.append(DamageText(h.x, h.y - 20, str(p.damage)))
-                            for _ in range(5):
-                                self.particles.append(BloodParticle(h.x, h.y))
-                                
-                            if h.hp <= 0:
-                                h.is_alive = False
-                                p.shooter.kills += 1
-                                
-                            hit = True
-                            break # Chỉ trúng 1 mục tiêu
-                            
-            # Xóa đạn nếu trúng đích hoặc hết thời gian bay
-            if hit or p.life <= 0:
-                if p in self.projectiles:
-                    self.projectiles.remove(p)
-            
-        self.frame_count += 1
+                    if h.is_alive and h!=p.shooter:
+                        if math.hypot(p.x-h.x,p.y-h.y)<13+p.hitbox_radius:
+                            adm=p.damage
+                            if h.shield_active: adm=max(1,int(adm*0.3))
+                            h.hp-=adm; h.hit_timer=11
+                            p.shooter.damage_dealt+=adm
+                            for _ in range(7): self.particles.append(BloodParticle(h.x,h.y))
+                            for _ in range(3): self.particles.append(SparkParticle(h.x,h.y,(255,185,52)))
+                            self.dmg_texts.append(DamageText(h.x,h.y-22,str(adm)))
+                            if p.proj_type=="EXPLOSIVE": 
+                                self._explosion(p.x,p.y,p.damage//2,p.shooter,52)
+                                self.camera_shake = 5
+                            if h.hp<=0:
+                                h.is_alive=False; p.shooter.kills+=1
+                                wn=p.shooter.equipped_weapon.name if p.shooter.equipped_weapon else "Ranged"
+                                self.add_kill(p.shooter.name,h.name,wn)
+                            hit=True; break
+            if not hit: new_proj.append(p)
+        self.projectiles=new_proj
+
+        self.particles=[p for p in self.particles if (p.update() or True) and p.life>0]
+        if len(self.particles)>MAX_PARTICLES:
+            self.particles=self.particles[-MAX_PARTICLES:]
+
+        self.dmg_texts=[dt for dt in self.dmg_texts if (dt.update() or True) and dt.life>0]
+        for kf in self.kill_feed: kf.life-=1
+        self.kill_feed=[kf for kf in self.kill_feed if kf.life>0]
+        self.frame_count+=1
+
+    def _explosion(self, x, y, dmg, shooter, radius):
+        for _ in range(int(radius//2)): self.particles.append(ExplosionParticle(x,y,(255,142,22)))
+        for _ in range(int(radius//5)): self.particles.append(SmokeParticle(x,y,(82,82,82)))
+        for _ in range(int(radius//4)): self.particles.append(SparkParticle(x,y,(255,225,52)))
+        for h in self.population:
+            if h.is_alive and h!=shooter:
+                d=math.hypot(x-h.x,y-h.y)
+                if d<radius:
+                    adm=max(1,int(dmg*(1-d/radius)))
+                    if h.shield_active: adm=max(1,int(adm*0.3))
+                    h.hp-=adm; h.hit_timer=14; shooter.damage_dealt+=adm
+                    self.dmg_texts.append(DamageText(h.x,h.y-22,str(adm),(255,142,22)))
+                    if h.hp<=0:
+                        h.is_alive=False; shooter.kills+=1
+                        wn=shooter.equipped_weapon.name if shooter.equipped_weapon else "Explosive"
+                        self.add_kill(shooter.name,h.name,wn+" 💥")
 
     def run(self):
         while self.running:
@@ -1160,11 +556,11 @@ class ArenaApp:
             self.update()
             self.draw()
             if self.render_enabled:
-                self.clock.tick(60) 
-                
+                self.clock.tick(FPS)
         pygame.quit()
         sys.exit()
 
-if __name__ == "__main__":
-    app = ArenaApp(map_size=6000, pop_size=200, max_frames=5000)
+# ==================== MAIN ====================
+if __name__=="__main__":
+    app=ArenaApp(map_size=MAP_SIZE, pop_size=POP_SIZE, max_frames=MAX_FRAMES)
     app.run()

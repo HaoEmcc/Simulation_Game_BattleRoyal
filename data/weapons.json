@@ -1,0 +1,450 @@
+[
+    {
+        "name": "Dao Găm",
+        "atk": 10,
+        "rng": 22,
+        "cd": 8,
+        "cls": "MELEE",
+        "col": [
+            180,
+            180,
+            210
+        ],
+        "spread": 0.0,
+        "skill": "Quick Strike"
+    },
+    {
+        "name": "Kiếm Thép",
+        "atk": 22,
+        "rng": 33,
+        "cd": 15,
+        "cls": "MELEE",
+        "col": [
+            200,
+            215,
+            235
+        ],
+        "spread": 0.0,
+        "skill": "Cleave"
+    },
+    {
+        "name": "Rìu Chiến",
+        "atk": 52,
+        "rng": 27,
+        "cd": 40,
+        "cls": "MELEE",
+        "col": [
+            155,
+            100,
+            50
+        ],
+        "spread": 0.0,
+        "skill": "Shockwave"
+    },
+    {
+        "name": "Giáo Dài",
+        "atk": 28,
+        "rng": 56,
+        "cd": 24,
+        "cls": "MELEE",
+        "col": [
+            215,
+            185,
+            145
+        ],
+        "spread": 0.0,
+        "skill": "Lunge"
+    },
+    {
+        "name": "Dual Blades",
+        "atk": 16,
+        "rng": 20,
+        "cd": 7,
+        "cls": "MELEE",
+        "col": [
+            90,
+            215,
+            215
+        ],
+        "spread": 0.0,
+        "skill": "Double Strike"
+    },
+    {
+        "name": "War Hammer",
+        "atk": 78,
+        "rng": 30,
+        "cd": 52,
+        "cls": "MELEE",
+        "col": [
+            120,
+            120,
+            130
+        ],
+        "spread": 0.0,
+        "skill": "Quake"
+    },
+    {
+        "name": "Flail",
+        "atk": 38,
+        "rng": 46,
+        "cd": 28,
+        "cls": "MELEE",
+        "col": [
+            185,
+            145,
+            60
+        ],
+        "spread": 0.0,
+        "skill": "Whirlwind"
+    },
+    {
+        "name": "Katana",
+        "atk": 26,
+        "rng": 28,
+        "cd": 6,
+        "cls": "MELEE",
+        "col": [
+            255,
+            255,
+            255
+        ],
+        "spread": 0.0,
+        "skill": "Blink Strike"
+    },
+    {
+        "name": "Scythe",
+        "atk": 42,
+        "rng": 38,
+        "cd": 35,
+        "cls": "MELEE",
+        "col": [
+            120,
+            40,
+            40
+        ],
+        "spread": 0.0,
+        "skill": "Lifesteal Strike"
+    },
+    {
+        "name": "Energy Sword",
+        "atk": 55,
+        "rng": 26,
+        "cd": 22,
+        "cls": "MELEE",
+        "col": [
+            50,
+            255,
+            100
+        ],
+        "spread": 0.0,
+        "skill": "Laser Beam"
+    },
+    {
+        "name": "Power Gauntlets",
+        "atk": 60,
+        "rng": 18,
+        "cd": 45,
+        "cls": "MELEE",
+        "col": [
+            200,
+            100,
+            20
+        ],
+        "spread": 0.0,
+        "skill": "Quake"
+    },
+    {
+        "name": "Cung Ngắn",
+        "atk": 18,
+        "rng": 185,
+        "cd": 20,
+        "cls": "RANGED",
+        "col": [
+            140,
+            70,
+            20
+        ],
+        "spread": 0.12,
+        "skill": "Volley"
+    },
+    {
+        "name": "Nỏ Thần",
+        "atk": 36,
+        "rng": 245,
+        "cd": 44,
+        "cls": "RANGED",
+        "col": [
+            105,
+            52,
+            22
+        ],
+        "spread": 0.06,
+        "skill": "Piercing Shot"
+    },
+    {
+        "name": "Súng Tỉa",
+        "atk": 92,
+        "rng": 390,
+        "cd": 88,
+        "cls": "RANGED",
+        "col": [
+            50,
+            52,
+            62
+        ],
+        "spread": 0.01,
+        "skill": "Sniper Mark"
+    },
+    {
+        "name": "Shotgun",
+        "atk": 46,
+        "rng": 115,
+        "cd": 50,
+        "cls": "RANGED",
+        "col": [
+            170,
+            170,
+            175
+        ],
+        "spread": 0.4,
+        "skill": "Explosive Shot"
+    },
+    {
+        "name": "Pistol",
+        "atk": 24,
+        "rng": 158,
+        "cd": 18,
+        "cls": "RANGED",
+        "col": [
+            135,
+            135,
+            155
+        ],
+        "spread": 0.08,
+        "skill": "Rapid Fire"
+    },
+    {
+        "name": "Grenade Launcher",
+        "atk": 68,
+        "rng": 225,
+        "cd": 72,
+        "cls": "RANGED",
+        "col": [
+            85,
+            125,
+            62
+        ],
+        "spread": 0.05,
+        "skill": "Grenade"
+    },
+    {
+        "name": "Minigun",
+        "atk": 12,
+        "rng": 175,
+        "cd": 4,
+        "cls": "RANGED",
+        "col": [
+            100,
+            100,
+            100
+        ],
+        "spread": 0.25,
+        "skill": "Rapid Fire"
+    },
+    {
+        "name": "Laser Rifle",
+        "atk": 30,
+        "rng": 350,
+        "cd": 25,
+        "cls": "RANGED",
+        "col": [
+            255,
+            50,
+            50
+        ],
+        "spread": 0.0,
+        "skill": "Laser Beam"
+    },
+    {
+        "name": "Poison Dart",
+        "atk": 15,
+        "rng": 160,
+        "cd": 16,
+        "cls": "RANGED",
+        "col": [
+            50,
+            200,
+            50
+        ],
+        "spread": 0.04,
+        "skill": "Poison Cloud"
+    },
+    {
+        "name": "Boomerang",
+        "atk": 28,
+        "rng": 220,
+        "cd": 30,
+        "cls": "RANGED",
+        "col": [
+            180,
+            120,
+            50
+        ],
+        "spread": 0.08,
+        "skill": "Tornado"
+    },
+    {
+        "name": "Trượng Phép",
+        "atk": 28,
+        "rng": 162,
+        "cd": 32,
+        "cls": "MAGIC",
+        "col": [
+            150,
+            0,
+            215
+        ],
+        "spread": 0.08,
+        "skill": "Arcane Bolt"
+    },
+    {
+        "name": "Magic Staff",
+        "atk": 44,
+        "rng": 215,
+        "cd": 46,
+        "cls": "MAGIC",
+        "col": [
+            82,
+            62,
+            205
+        ],
+        "spread": 0.04,
+        "skill": "Chain Bolt"
+    },
+    {
+        "name": "Fire Wand",
+        "atk": 24,
+        "rng": 135,
+        "cd": 26,
+        "cls": "MAGIC",
+        "col": [
+            255,
+            82,
+            32
+        ],
+        "spread": 0.1,
+        "skill": "Fireball"
+    },
+    {
+        "name": "Thunder Spear",
+        "atk": 52,
+        "rng": 285,
+        "cd": 62,
+        "cls": "MAGIC",
+        "col": [
+            105,
+            205,
+            255
+        ],
+        "spread": 0.03,
+        "skill": "Chain Lightning"
+    },
+    {
+        "name": "Ice Wand",
+        "atk": 22,
+        "rng": 145,
+        "cd": 28,
+        "cls": "MAGIC",
+        "col": [
+            100,
+            255,
+            255
+        ],
+        "spread": 0.05,
+        "skill": "Frost Nova"
+    },
+    {
+        "name": "Venom Staff",
+        "atk": 35,
+        "rng": 195,
+        "cd": 40,
+        "cls": "MAGIC",
+        "col": [
+            80,
+            255,
+            80
+        ],
+        "spread": 0.15,
+        "skill": "Poison Cloud"
+    },
+    {
+        "name": "Meteor Staff",
+        "atk": 40,
+        "rng": 320,
+        "cd": 75,
+        "cls": "MAGIC",
+        "col": [
+            255,
+            100,
+            0
+        ],
+        "spread": 0.0,
+        "skill": "Meteor Strike"
+    },
+    {
+        "name": "Necro Tome",
+        "atk": 15,
+        "rng": 250,
+        "cd": 20,
+        "cls": "MAGIC",
+        "col": [
+            100,
+            30,
+            100
+        ],
+        "spread": 0.05,
+        "skill": "Lifesteal Strike"
+    },
+    {
+        "name": "Plasma Cannon",
+        "atk": 120,
+        "rng": 400,
+        "cd": 110,
+        "cls": "RANGED",
+        "col": [
+            50,
+            50,
+            255
+        ],
+        "spread": 0.0,
+        "skill": "Meteor Strike"
+    },
+    {
+        "name": "Mjolnir",
+        "atk": 85,
+        "rng": 40,
+        "cd": 55,
+        "cls": "MELEE",
+        "col": [
+            150,
+            200,
+            255
+        ],
+        "spread": 0.0,
+        "skill": "Chain Lightning"
+    },
+    {
+        "name": "Kiến Hào",
+        "atk": 150,
+        "rng": 15000,
+        "cd": 120,
+        "cls": "RANGED",
+        "col": [
+            255,
+            255,
+            248
+        ],
+        "spread": 0.0,
+        "skill": "Sniper Mark"
+    }
+]

@@ -1,0 +1,92 @@
+{
+    "Warrior": {
+        "color": [
+            220,
+            75,
+            40
+        ],
+        "glow": [
+            255,
+            120,
+            60
+        ],
+        "hp_mult": 1.4,
+        "spd_mult": 1.1,
+        "sides": 5,
+        "skill": "Whirlwind",
+        "skill_cd": 300,
+        "size": 12
+    },
+    "Ranger": {
+        "color": [
+            50,
+            195,
+            80
+        ],
+        "glow": [
+            90,
+            255,
+            120
+        ],
+        "hp_mult": 0.9,
+        "spd_mult": 1.4,
+        "sides": 4,
+        "skill": "Eagle Eye",
+        "skill_cd": 250,
+        "size": 10
+    },
+    "Mage": {
+        "color": [
+            155,
+            55,
+            220
+        ],
+        "glow": [
+            200,
+            90,
+            255
+        ],
+        "hp_mult": 0.7,
+        "spd_mult": 1.0,
+        "sides": 8,
+        "skill": "Arcane Nova",
+        "skill_cd": 350,
+        "size": 11
+    },
+    "Assassin": {
+        "color": [
+            55,
+            55,
+            80
+        ],
+        "glow": [
+            140,
+            140,
+            200
+        ],
+        "hp_mult": 0.8,
+        "spd_mult": 1.8,
+        "sides": 3,
+        "skill": "Shadow Dash",
+        "skill_cd": 200,
+        "size": 9
+    },
+    "Tank": {
+        "color": [
+            195,
+            165,
+            25
+        ],
+        "glow": [
+            255,
+            220,
+            60
+        ],
+        "hp_mult": 1.8,
+        "spd_mult": 0.65,
+        "sides": 6,
+        "skill": "Iron Skin",
+        "skill_cd": 400,
+        "size": 14
+    }
+}
